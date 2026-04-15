@@ -1,4 +1,4 @@
-import type { Color, TicTacToeCell } from '@connect4/shared'
+import type { PlayerId, TicTacToeCell } from '@connect4/shared'
 
 const N = 3
 
@@ -10,25 +10,23 @@ export function placePiece(
   board: TicTacToeCell[][],
   row: number,
   col: number,
-  color: Color
+  playerId: PlayerId
 ): boolean {
   if (row < 0 || row >= N || col < 0 || col >= N) return false
   if (board[row][col] !== null) return false
-  board[row][col] = color
+  board[row][col] = playerId
   return true
 }
 
 export function checkWin(board: TicTacToeCell[][], row: number, col: number): boolean {
-  const color = board[row][col]
-  if (!color) return false
+  const pid = board[row][col]
+  if (!pid) return false
   const lines: [number, number][][] = [
-    // row
     [
       [row, 0],
       [row, 1],
       [row, 2],
     ],
-    // col
     [
       [0, col],
       [1, col],
@@ -49,7 +47,7 @@ export function checkWin(board: TicTacToeCell[][], row: number, col: number): bo
       [2, 0],
     ])
   }
-  return lines.some((cells) => cells.every(([r, c]) => board[r][c] === color))
+  return lines.some((cells) => cells.every(([r, c]) => board[r][c] === pid))
 }
 
 export function checkDraw(board: TicTacToeCell[][]): boolean {

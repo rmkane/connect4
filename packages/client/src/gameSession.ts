@@ -1,6 +1,12 @@
 import { type TemplateResult, html, nothing, render } from 'lit'
 
-import type { ClientMessage, GameKind, RoomSnapshot, ServerMessage } from '@connect4/shared'
+import type {
+  ClientMessage,
+  GameKind,
+  PlayerId,
+  RoomSnapshot,
+  ServerMessage,
+} from '@connect4/shared'
 
 import { clientConfig } from '@/config.js'
 import { logger } from '@/logger.js'
@@ -21,6 +27,7 @@ export function mountGameSession(opts: { host: HTMLElement; roomId: string }): G
   let displayName = ''
   let phase: 'name' | 'play' = 'name'
   let lastSnapshot: RoomSnapshot | null = null
+  let myPlayerId: PlayerId | null = null
   let inviteFeedback: '' | 'copied' | 'failed' = ''
   let inviteFeedbackTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -63,7 +70,15 @@ export function mountGameSession(opts: { host: HTMLElement; roomId: string }): G
           logger.debug({ roomId }, 'sending new_round')
           send({ type: 'new_round', roomId, gameSessionId: game.gameSessionId })
         },
-        displayName
+        () => {
+          logger.debug({ roomId }, 'dismiss_completed_game')
+          send({ type: 'dismiss_completed_game', roomId })
+        },
+        () => {
+          logger.debug({ roomId }, 'surrender connect4')
+          send({ type: 'surrender', roomId, gameSessionId: game.gameSessionId })
+        },
+        myPlayerId
       )
       return
     }
@@ -84,7 +99,13 @@ export function mountGameSession(opts: { host: HTMLElement; roomId: string }): G
       () => {
         send({ type: 'new_round', roomId, gameSessionId: ttt.gameSessionId })
       },
-      displayName
+      () => {
+        send({ type: 'dismiss_completed_game', roomId })
+      },
+      () => {
+        send({ type: 'surrender', roomId, gameSessionId: ttt.gameSessionId })
+      },
+      myPlayerId
     )
   }
 
@@ -220,6 +241,11 @@ export function mountGameSession(opts: { host: HTMLElement; roomId: string }): G
         return
       }
       logger.debug({ type: msg.type }, 'server message')
+      if (msg.type === 'joined_room') {
+        myPlayerId = msg.playerId
+        logger.info({ playerId: msg.playerId, seat: msg.seat }, 'assigned player id')
+        if (phase === 'play' && lastSnapshot) paintBoardArea()
+      }
       if (msg.type === 'room_state') {
         lastSnapshot = msg.snapshot
         if (phase === 'play') paintBoardArea()
@@ -349,6 +375,7 @@ export function mountGameSession(opts: { host: HTMLElement; roomId: string }): G
     clearInviteFeedbackTimer()
     ws?.close()
     ws = null
+    myPlayerId = null
     setUserContext(null)
     render(nothing, host)
   }

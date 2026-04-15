@@ -2,7 +2,7 @@ import 'dotenv/config'
 import { createServer } from 'http'
 import { type RawData, WebSocketServer } from 'ws'
 
-import { ClientMessage, Color } from '@connect4/shared'
+import { ClientMessage, type Color, type PlayerId } from '@connect4/shared'
 
 import { serverConfig } from '@/config.js'
 import { GameManager } from '@/game/GameManager.js'
@@ -73,7 +73,8 @@ wss.on('connection', (ws) => {
   connLog.info('websocket connected')
 
   let assignedRoomId: string | null = null
-  let assignedColor: Color | null = null
+  let assignedPlayerId: PlayerId | null = null
+  let assignedSeat: Color | null = null
 
   ws.on('message', (data) => {
     const size = wsPayloadBytes(data)
@@ -93,12 +94,18 @@ wss.on('connection', (ws) => {
 
     if (msg.type === 'join_room') {
       const room = manager.getOrCreate(msg.roomId)
-      const color = room.join(ws, msg.displayName)
-      if (color) {
+      const joined = room.join(ws, msg.displayName)
+      if (joined) {
         assignedRoomId = msg.roomId
-        assignedColor = color
+        assignedPlayerId = joined.playerId
+        assignedSeat = joined.seat
         connLog.info(
-          { roomId: msg.roomId, color, displayName: msg.displayName },
+          {
+            roomId: msg.roomId,
+            playerId: joined.playerId,
+            seat: joined.seat,
+            displayName: msg.displayName,
+          },
           'player joined room'
         )
       } else {
@@ -119,7 +126,7 @@ wss.on('connection', (ws) => {
     if (
       msg.type === 'create_game' &&
       assignedRoomId &&
-      assignedColor &&
+      assignedPlayerId &&
       msg.roomId === assignedRoomId
     ) {
       const room = manager.get(assignedRoomId)
@@ -138,20 +145,20 @@ wss.on('connection', (ws) => {
     if (
       msg.type === 'game_move' &&
       assignedRoomId &&
-      assignedColor &&
+      assignedPlayerId &&
       msg.roomId === assignedRoomId
     ) {
       connLog.debug(
-        { roomId: assignedRoomId, color: assignedColor, gameSessionId: msg.gameSessionId },
+        { roomId: assignedRoomId, playerId: assignedPlayerId, gameSessionId: msg.gameSessionId },
         'game_move'
       )
-      manager.get(assignedRoomId)?.handleMove(assignedColor, msg.gameSessionId, msg.move)
+      manager.get(assignedRoomId)?.handleMove(assignedPlayerId, msg.gameSessionId, msg.move)
     }
 
     if (
       msg.type === 'new_round' &&
       assignedRoomId &&
-      assignedColor &&
+      assignedPlayerId &&
       msg.roomId === assignedRoomId
     ) {
       const room = manager.get(assignedRoomId)
@@ -161,7 +168,43 @@ wss.on('connection', (ws) => {
           JSON.stringify({
             type: 'error',
             message:
-              'New round is only available after a finished game, with both players still connected.',
+              'Play again is only available after a finished game, with both players still connected.',
+          })
+        )
+      }
+    }
+
+    if (
+      msg.type === 'surrender' &&
+      assignedRoomId &&
+      assignedPlayerId &&
+      msg.roomId === assignedRoomId
+    ) {
+      const room = manager.get(assignedRoomId)
+      if (room && !room.surrender(assignedPlayerId, msg.gameSessionId)) {
+        connLog.debug({ roomId: assignedRoomId }, 'surrender rejected')
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            message: 'Surrender is only available during an active game, from a seated player.',
+          })
+        )
+      }
+    }
+
+    if (
+      msg.type === 'dismiss_completed_game' &&
+      assignedRoomId &&
+      assignedPlayerId &&
+      msg.roomId === assignedRoomId
+    ) {
+      const room = manager.get(assignedRoomId)
+      if (room && !room.dismissCompletedGame(assignedPlayerId)) {
+        connLog.debug({ roomId: assignedRoomId }, 'dismiss_completed_game rejected')
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            message: 'New game is only available after a finished round, from a seated player.',
           })
         )
       }
@@ -169,10 +212,13 @@ wss.on('connection', (ws) => {
   })
 
   ws.on('close', () => {
-    connLog.info({ roomId: assignedRoomId, color: assignedColor }, 'websocket disconnected')
-    if (assignedRoomId && assignedColor) {
+    connLog.info(
+      { roomId: assignedRoomId, seat: assignedSeat, playerId: assignedPlayerId },
+      'websocket disconnected'
+    )
+    if (assignedRoomId && assignedSeat) {
       const rid = assignedRoomId
-      manager.get(rid)?.disconnect(assignedColor)
+      manager.get(rid)?.disconnect(assignedSeat)
       manager.removeRoomIfEmpty(rid)
     }
   })

@@ -1,5 +1,5 @@
 import type { Connect4State } from '@/connect4.js'
-import type { PlayerInfo } from '@/core.js'
+import type { PlayerId, PlayerInfo } from '@/core.js'
 import type { TicTacToeState } from '@/ticTacToe.js'
 
 export type GameKind = 'connect4' | 'tic_tac_toe'
@@ -15,8 +15,11 @@ export type AnyGameState = Connect4State | TicTacToeState
 export interface RoomSnapshot {
   roomId: string
   seats: { red: PlayerInfo | null; yellow: PlayerInfo | null }
-  /** Wins in this room (draws do not increment). Applies across games in the room. */
-  matchScores: { red: number; yellow: number }
+  /**
+   * Wins in this room keyed by `PlayerId` (draws do not increment).
+   * Includes an entry for each currently seated player (default 0).
+   */
+  matchScores: Record<PlayerId, number>
   games: GameListing[]
   activeGame: AnyGameState | null
 }
