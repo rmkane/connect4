@@ -20,6 +20,7 @@ export class GameRoom {
       status: 'waiting',
       players: { red: null, yellow: null },
       result: null,
+      matchScores: { red: 0, yellow: 0 },
     }
   }
 
@@ -68,6 +69,7 @@ export class GameRoom {
     if (checkWin(this.state.board, row, column)) {
       this.state.status = 'completed'
       this.state.result = { winner: color, reason: 'four_in_a_row' }
+      this.state.matchScores[color] += 1
       this.log.info({ color, column, row }, 'game won four in a row')
     } else if (checkDraw(this.state.board)) {
       this.state.status = 'completed'
@@ -81,6 +83,23 @@ export class GameRoom {
     this.broadcast({ type: 'game_state', state: this.state })
   }
 
+  /** Start another round after a completed game; both seats must still be filled and sockets open. */
+  startNewMatch(): boolean {
+    if (this.state.status !== 'completed') return false
+    if (!this.state.players.red || !this.state.players.yellow) return false
+    for (const c of ['red', 'yellow'] as const) {
+      const sock = this.sockets.get(c)
+      if (!sock || sock.readyState !== WebSocket.OPEN) return false
+    }
+    this.state.board = makeBoard()
+    this.state.currentTurn = 'red'
+    this.state.status = 'in_progress'
+    this.state.result = null
+    this.log.info('new match started after completed game')
+    this.broadcast({ type: 'game_state', state: this.state })
+    return true
+  }
+
   disconnect(color: Color) {
     this.sockets.delete(color)
     this.state.players[color] = null
@@ -90,6 +109,15 @@ export class GameRoom {
       this.state.board = makeBoard()
       this.state.result = null
       this.state.currentTurn = 'red'
+    } else if (this.state.status === 'completed') {
+      this.state.status = 'waiting'
+      this.state.board = makeBoard()
+      this.state.result = null
+      this.state.currentTurn = 'red'
+    }
+
+    if (!this.state.players.red && !this.state.players.yellow) {
+      this.state.matchScores = { red: 0, yellow: 0 }
     }
 
     this.log.info({ color }, 'player disconnected')

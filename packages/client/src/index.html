@@ -19,14 +19,24 @@
           <span class="hidden text-xs font-medium text-zinc-500 sm:inline">Drop four in a row</span>
         </a>
         <nav class="text-sm">
-          <a
-            href="/"
-            class="rounded-md px-2 py-1 font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900"
-            >Home</a
-          >
+          <!-- prettier-ignore -->
+          <a href="/" class="rounded-md px-2 py-1 font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900">Home</a>
         </nav>
       </div>
     </header>
+
+    <div
+      id="user-context"
+      class="hidden border-b border-zinc-200 bg-zinc-50/95 text-zinc-800"
+      aria-live="polite"
+    >
+      <div
+        class="mx-auto flex max-w-5xl flex-wrap items-baseline gap-x-2 gap-y-1 px-4 py-2 text-sm sm:px-6"
+      >
+        <span class="text-zinc-500">Playing as</span>
+        <span id="user-context-name" class="font-semibold tracking-tight text-zinc-900"></span>
+      </div>
+    </div>
 
     <main
       id="app"
@@ -40,7 +50,7 @@
         <p class="text-sm text-zinc-600">Local multiplayer · WebSocket server</p>
         <span class="hidden text-zinc-300 sm:inline" aria-hidden="true">·</span>
         <p class="text-xs text-zinc-500">
-          Open two browsers or tabs on the same table link to play.
+          Open two browsers or tabs on the same room link to play.
         </p>
       </div>
     </footer>

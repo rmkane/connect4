@@ -5,29 +5,41 @@ export function isUuid(s: string): boolean {
   return UUID_RE.test(s.trim())
 }
 
-/** Accept raw UUID or full `/game/<uuid>` URL from the join field. */
+/** Accept raw UUID or pasted URL with `/room/<uuid>` or legacy `/game/<uuid>`. */
 export function parseGameIdInput(raw: string): string | null {
   const t = raw.trim()
-  const fromPath = t.match(/\/game\/([^/?#\s]+)/i)
+  const fromPath = t.match(/\/(?:room|game)\/([^/?#\s]+)/i)
   if (fromPath?.[1] && isUuid(fromPath[1])) return fromPath[1].toLowerCase()
   if (isUuid(t)) return t.toLowerCase()
   return null
 }
 
-export type AppRoute = { type: 'home' } | { type: 'game'; gameId: string }
+export type AppRoute = { type: 'home' } | { type: 'room'; gameId: string }
 
 export function parseRoute(): AppRoute {
-  const m = location.pathname.match(/^\/game\/([^/]+)\/?$/i)
-  if (m?.[1]) {
-    if (isUuid(m[1])) return { type: 'game', gameId: m[1].toLowerCase() }
+  const roomPath = location.pathname.match(/^\/room\/([^/]+)\/?$/i)
+  if (roomPath?.[1]) {
+    if (isUuid(roomPath[1])) return { type: 'room', gameId: roomPath[1].toLowerCase() }
+    history.replaceState(null, '', '/')
+    return { type: 'home' }
+  }
+
+  const oldGamePath = location.pathname.match(/^\/game\/([^/]+)\/?$/i)
+  if (oldGamePath?.[1] && isUuid(oldGamePath[1])) {
+    const id = oldGamePath[1].toLowerCase()
+    history.replaceState(null, '', `/room/${id}`)
+    return { type: 'room', gameId: id }
+  }
+  if (oldGamePath?.[1]) {
     history.replaceState(null, '', '/')
     return { type: 'home' }
   }
 
   const legacy = new URLSearchParams(location.search).get('gameId')
   if (legacy && isUuid(legacy)) {
-    history.replaceState(null, '', `/game/${legacy.toLowerCase()}`)
-    return { type: 'game', gameId: legacy.toLowerCase() }
+    const id = legacy.toLowerCase()
+    history.replaceState(null, '', `/room/${id}`)
+    return { type: 'room', gameId: id }
   }
 
   if (legacy && !isUuid(legacy)) {
@@ -43,8 +55,8 @@ export function initRouter(onRoute: () => void) {
   rerender = onRoute
 }
 
-export function navigateToGame(gameId: string) {
-  history.pushState(null, '', `/game/${gameId}`)
+export function navigateToRoom(gameId: string) {
+  history.pushState(null, '', `/room/${gameId}`)
   rerender?.()
 }
 

@@ -2,17 +2,25 @@ import { type TemplateResult, html, nothing, render } from 'lit'
 
 import type { ClientMessage, ServerMessage } from '@connect4/shared'
 
+import { clientConfig } from '@/config.js'
 import { logger } from '@/logger.js'
 import { renderBoard } from '@/renderer.js'
 import { navigateHome } from '@/router.js'
+import { setUserContext } from '@/userContext.js'
 
 export type GameSessionHandle = { destroy: () => void }
+
+function canUseWebShare(): boolean {
+  return typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+}
 
 export function mountGameSession(opts: { host: HTMLElement; gameId: string }): GameSessionHandle {
   const { host, gameId } = opts
   let ws: WebSocket | null = null
   let displayName = ''
   let phase: 'name' | 'play' = 'name'
+  let inviteFeedback: '' | 'copied' | 'failed' = ''
+  let inviteFeedbackTimer: ReturnType<typeof setTimeout> | null = null
 
   function send(msg: ClientMessage) {
     ws?.send(JSON.stringify(msg))
@@ -23,8 +31,69 @@ export function mountGameSession(opts: { host: HTMLElement; gameId: string }): G
     send({ type: 'drop_piece', gameId, column })
   }
 
+  function requestNewGame() {
+    logger.debug({ gameId }, 'sending new_game')
+    send({ type: 'new_game', gameId })
+  }
+
+  function clearInviteFeedbackTimer() {
+    if (inviteFeedbackTimer !== null) {
+      clearTimeout(inviteFeedbackTimer)
+      inviteFeedbackTimer = null
+    }
+  }
+
+  function setInviteFeedback(next: '' | 'copied' | 'failed', ms: number) {
+    clearInviteFeedbackTimer()
+    inviteFeedback = next
+    paint()
+    inviteFeedbackTimer = setTimeout(() => {
+      inviteFeedback = ''
+      inviteFeedbackTimer = null
+      paint()
+    }, ms)
+  }
+
+  async function copyInviteUrl(shareUrl: string) {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setInviteFeedback('copied', 2000)
+    } catch (err) {
+      logger.warn({ err }, 'clipboard write failed, trying execCommand')
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = shareUrl
+        ta.setAttribute('readonly', '')
+        ta.style.position = 'fixed'
+        ta.style.left = '-9999px'
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+        setInviteFeedback('copied', 2000)
+      } catch (err2) {
+        logger.warn({ err: err2 }, 'copy to clipboard failed')
+        setInviteFeedback('failed', 3500)
+      }
+    }
+  }
+
+  async function shareInviteUrl(shareUrl: string) {
+    if (typeof navigator.share !== 'function') return
+    try {
+      await navigator.share({
+        title: 'Connect 4',
+        text: 'Join my Connect 4 room',
+        url: shareUrl,
+      })
+    } catch (err) {
+      if (err && typeof err === 'object' && 'name' in err && err.name === 'AbortError') return
+      logger.warn({ err }, 'navigator.share failed')
+    }
+  }
+
   function connect() {
-    ws = new WebSocket(`ws://localhost:3000`)
+    ws = new WebSocket(clientConfig.wsUrl)
     ws.onopen = () => {
       logger.info({ gameId, displayName }, 'websocket open sending join_game')
       send({ type: 'join_game', gameId, displayName })
@@ -38,7 +107,7 @@ export function mountGameSession(opts: { host: HTMLElement; gameId: string }): G
         return
       }
       logger.debug({ type: msg.type }, 'server message')
-      if (msg.type === 'game_state') renderBoard(msg.state, dropPiece, displayName)
+      if (msg.type === 'game_state') renderBoard(msg.state, dropPiece, requestNewGame, displayName)
       if (msg.type === 'error') {
         logger.warn({ message: msg.message }, 'server error')
         alert(msg.message)
@@ -53,7 +122,7 @@ export function mountGameSession(opts: { host: HTMLElement; gameId: string }): G
   }
 
   function shell(): TemplateResult {
-    const shareUrl = `${location.origin}/game/${gameId}`
+    const shareUrl = `${location.origin}/room/${gameId}`
 
     return html`
       <div class="flex w-full max-w-4xl flex-col items-stretch">
@@ -77,8 +146,36 @@ export function mountGameSession(opts: { host: HTMLElement; gameId: string }): G
             </p>
           </div>
           <div class="min-w-0 sm:max-w-[55%] sm:text-right">
-            <p class="text-xs font-medium tracking-wide text-zinc-500 uppercase">Invite link</p>
-            <p class="mt-1 font-mono text-xs break-all text-zinc-700 select-all">${shareUrl}</p>
+            <p class="text-xs font-medium tracking-wide text-zinc-500 uppercase">Invite</p>
+            <div
+              class="mt-2 flex flex-wrap items-center gap-2 sm:justify-end"
+              role="group"
+              aria-label="Copy or share room link"
+            >
+              <button
+                type="button"
+                class="inline-flex cursor-pointer items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50"
+                @click=${() => void copyInviteUrl(shareUrl)}
+              >
+                Copy link
+              </button>
+              ${canUseWebShare()
+                ? html`
+                    <button
+                      type="button"
+                      class="inline-flex cursor-pointer items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50"
+                      @click=${() => void shareInviteUrl(shareUrl)}
+                    >
+                      Share…
+                    </button>
+                  `
+                : nothing}
+              ${inviteFeedback === 'copied'
+                ? html`<span class="text-xs font-medium text-emerald-700">Copied</span>`
+                : inviteFeedback === 'failed'
+                  ? html`<span class="text-xs font-medium text-red-700">Copy failed</span>`
+                  : nothing}
+            </div>
           </div>
         </div>
 
@@ -91,6 +188,7 @@ export function mountGameSession(opts: { host: HTMLElement; gameId: string }): G
                   const fd = new FormData(e.target as HTMLFormElement)
                   displayName = String(fd.get('displayName') ?? '').trim() || 'Player'
                   logger.info({ gameId, displayName }, 'starting session')
+                  setUserContext(displayName)
                   phase = 'play'
                   paint()
                   connect()
@@ -131,8 +229,10 @@ export function mountGameSession(opts: { host: HTMLElement; gameId: string }): G
   }
 
   function destroy() {
+    clearInviteFeedbackTimer()
     ws?.close()
     ws = null
+    setUserContext(null)
     render(nothing, host)
   }
 

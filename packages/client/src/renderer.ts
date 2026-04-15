@@ -1,4 +1,4 @@
-import { type TemplateResult, html, render } from 'lit'
+import { type TemplateResult, html, nothing, render } from 'lit'
 
 import type { Color, GameState } from '@connect4/shared'
 
@@ -13,9 +13,14 @@ function canDrop(state: GameState, seat: Color | null): boolean {
   return state.status === 'in_progress' && seat !== null && state.currentTurn === seat
 }
 
+function canRequestNewGame(state: GameState, seat: Color | null): boolean {
+  if (state.status !== 'completed' || seat === null) return false
+  return Boolean(state.players.red && state.players.yellow)
+}
+
 function dropTitle(state: GameState, seat: Color | null): string {
   if (state.status !== 'in_progress') return 'Game is not in progress'
-  if (seat === null) return 'You are not seated in this game'
+  if (seat === null) return 'You are not seated in this room'
   if (state.currentTurn !== seat)
     return `Wait for ${state.players[state.currentTurn]?.displayName ?? state.currentTurn}'s move`
   return 'Drop a piece in this column'
@@ -55,7 +60,7 @@ function headline(state: GameState): string {
 /** Extra context: your seat, result reason. */
 function detailLine(state: GameState, seat: Color | null): string | null {
   if (seat) {
-    const bits: string[] = [`You are playing as ${seat}`]
+    const bits: string[] = [`Your color: ${seat}`]
     if (state.status === 'completed' && state.result && state.result.reason !== 'draw') {
       bits.push(`Reason: ${state.result.reason.replace(/_/g, ' ')}`)
     }
@@ -71,10 +76,13 @@ function detailLine(state: GameState, seat: Color | null): string | null {
 function boardTemplate(
   state: GameState,
   onDrop: (col: number) => void,
+  onNewGame: () => void,
   myDisplayName: string
 ): TemplateResult {
   const seat = seatColor(state, myDisplayName)
   const allowDrop = canDrop(state, seat)
+  const showNewGame = canRequestNewGame(state, seat)
+  const showDropRow = state.status === 'in_progress'
   const cols = state.board[0].length
 
   const dropButtons = Array.from({ length: cols }, (_, c) => {
@@ -117,11 +125,28 @@ function boardTemplate(
             <span class="text-zinc-700">${state.players.yellow?.displayName ?? '—'}</span>
           </p>
         </div>
+        <p class="mt-3 text-xs font-medium tracking-wide text-zinc-500 uppercase">Games won</p>
+        <p class="mt-1 text-base font-semibold text-zinc-900 tabular-nums">
+          <span class="text-red-700">${state.matchScores.red}</span>
+          <span class="mx-1.5 font-normal text-zinc-400">—</span>
+          <span class="text-amber-700">${state.matchScores.yellow}</span>
+        </p>
         ${detail ? html`<p class="mt-2 text-sm text-zinc-600">${detail}</p>` : null}
+        ${showNewGame
+          ? html`
+              <button
+                type="button"
+                class="mt-4 w-full rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm font-semibold text-zinc-900 shadow-sm transition hover:bg-white"
+                @click=${onNewGame}
+              >
+                New game
+              </button>
+            `
+          : nothing}
       </section>
 
       <div class="flex flex-col gap-2">
-        <div class="mb-1 flex gap-1">${dropButtons}</div>
+        ${showDropRow ? html`<div class="mb-1 flex gap-1">${dropButtons}</div>` : nothing}
         <div class="grid auto-rows-[2.5rem] grid-cols-7 gap-1">${cells}</div>
       </div>
     </div>
@@ -131,10 +156,11 @@ function boardTemplate(
 export function renderBoard(
   state: GameState,
   onDrop: (col: number) => void,
+  onNewGame: () => void,
   myDisplayName: string
 ) {
   const container = document.getElementById('board')
   if (!container) return
 
-  render(boardTemplate(state, onDrop, myDisplayName), container)
+  render(boardTemplate(state, onDrop, onNewGame, myDisplayName), container)
 }
