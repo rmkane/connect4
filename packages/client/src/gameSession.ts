@@ -1,12 +1,13 @@
 import { type TemplateResult, html, nothing, render } from 'lit'
 
-import type { ClientMessage, ServerMessage } from '@connect4/shared'
+import type { ClientMessage, GameKind, RoomSnapshot, ServerMessage } from '@connect4/shared'
 
 import { clientConfig } from '@/config.js'
 import { logger } from '@/logger.js'
-import { renderBoard } from '@/renderer.js'
 import { navigateHome } from '@/router.js'
 import { setUserContext } from '@/userContext.js'
+import { renderConnect4View } from '@/views/connect4View.js'
+import { renderTicTacToeView } from '@/views/ticTacToeView.js'
 
 export type GameSessionHandle = { destroy: () => void }
 
@@ -14,11 +15,12 @@ function canUseWebShare(): boolean {
   return typeof navigator !== 'undefined' && typeof navigator.share === 'function'
 }
 
-export function mountGameSession(opts: { host: HTMLElement; gameId: string }): GameSessionHandle {
-  const { host, gameId } = opts
+export function mountGameSession(opts: { host: HTMLElement; roomId: string }): GameSessionHandle {
+  const { host, roomId } = opts
   let ws: WebSocket | null = null
   let displayName = ''
   let phase: 'name' | 'play' = 'name'
+  let lastSnapshot: RoomSnapshot | null = null
   let inviteFeedback: '' | 'copied' | 'failed' = ''
   let inviteFeedbackTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -26,14 +28,125 @@ export function mountGameSession(opts: { host: HTMLElement; gameId: string }): G
     ws?.send(JSON.stringify(msg))
   }
 
-  function dropPiece(column: number) {
-    logger.debug({ gameId, column }, 'sending drop_piece')
-    send({ type: 'drop_piece', gameId, column })
+  function paintBoardArea() {
+    const el = document.getElementById('board')
+    if (!el || !lastSnapshot) return
+
+    const s = lastSnapshot
+    const bothSeated = Boolean(s.seats.red && s.seats.yellow)
+
+    if (!bothSeated) {
+      render(preGameWaiting(s), el)
+      return
+    }
+
+    if (!s.activeGame) {
+      render(gamePicker(), el)
+      return
+    }
+
+    if (s.activeGame.game === 'connect4') {
+      const game = s.activeGame
+      renderConnect4View(
+        s,
+        game,
+        (column) => {
+          logger.debug({ roomId, column }, 'sending connect4 move')
+          send({
+            type: 'game_move',
+            roomId,
+            gameSessionId: game.gameSessionId,
+            move: { game: 'connect4', column },
+          })
+        },
+        () => {
+          logger.debug({ roomId }, 'sending new_round')
+          send({ type: 'new_round', roomId, gameSessionId: game.gameSessionId })
+        },
+        displayName
+      )
+      return
+    }
+
+    const ttt = s.activeGame
+    renderTicTacToeView(
+      s,
+      ttt,
+      (row, col) => {
+        logger.debug({ roomId, row, col }, 'sending tic-tac-toe move')
+        send({
+          type: 'game_move',
+          roomId,
+          gameSessionId: ttt.gameSessionId,
+          move: { game: 'tic_tac_toe', row, col },
+        })
+      },
+      () => {
+        send({ type: 'new_round', roomId, gameSessionId: ttt.gameSessionId })
+      },
+      displayName
+    )
   }
 
-  function requestNewGame() {
-    logger.debug({ gameId }, 'sending new_game')
-    send({ type: 'new_game', gameId })
+  function preGameWaiting(s: RoomSnapshot): TemplateResult {
+    const r = s.seats.red?.displayName ?? null
+    const y = s.seats.yellow?.displayName ?? null
+
+    return html`
+      <div
+        class="mx-auto max-w-md rounded-xl border border-zinc-200 bg-white p-6 text-center shadow-sm"
+        aria-live="polite"
+      >
+        <h2 class="text-lg font-semibold text-zinc-900">Waiting for opponent</h2>
+        <p class="mt-3 text-sm text-zinc-600">
+          ${r && !y
+            ? html`Invite someone for <span class="font-medium text-amber-700">yellow</span>.`
+            : !r && y
+              ? html`Waiting for <span class="font-medium text-red-700">red</span> to join.`
+              : html`Share the invite link so someone can take the other seat.`}
+        </p>
+        <div class="mt-4 text-left text-sm text-zinc-700">
+          <p><span class="font-medium text-red-700">Red</span>: ${r ?? '—'}</p>
+          <p class="mt-1"><span class="font-medium text-amber-700">Yellow</span>: ${y ?? '—'}</p>
+        </div>
+      </div>
+    `
+  }
+
+  function gamePicker(): TemplateResult {
+    function pick(kind: GameKind) {
+      logger.info({ roomId, kind }, 'create_game')
+      send({ type: 'create_game', roomId, kind })
+    }
+
+    return html`
+      <div
+        class="mx-auto flex max-w-md flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm"
+        aria-labelledby="pick-game-heading"
+      >
+        <h2 id="pick-game-heading" class="text-lg font-semibold text-zinc-900">Choose a game</h2>
+        <p class="text-sm text-zinc-600">
+          Both players are here. Pick what to play — you can start a different title after a round
+          ends.
+        </p>
+        <div class="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            class="flex-1 rounded-lg bg-red-700 px-4 py-3 text-sm font-semibold text-white shadow transition hover:bg-red-800"
+            @click=${() => pick('connect4')}
+          >
+            Connect 4
+          </button>
+          <button
+            type="button"
+            class="flex-1 rounded-lg border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-100"
+            @click=${() => pick('tic_tac_toe')}
+          >
+            Tic-tac-toe
+          </button>
+        </div>
+      </div>
+    `
   }
 
   function clearInviteFeedbackTimer() {
@@ -82,8 +195,8 @@ export function mountGameSession(opts: { host: HTMLElement; gameId: string }): G
     if (typeof navigator.share !== 'function') return
     try {
       await navigator.share({
-        title: 'Connect 4',
-        text: 'Join my Connect 4 room',
+        title: 'Game room',
+        text: 'Join my game room',
         url: shareUrl,
       })
     } catch (err) {
@@ -95,8 +208,8 @@ export function mountGameSession(opts: { host: HTMLElement; gameId: string }): G
   function connect() {
     ws = new WebSocket(clientConfig.wsUrl)
     ws.onopen = () => {
-      logger.info({ gameId, displayName }, 'websocket open sending join_game')
-      send({ type: 'join_game', gameId, displayName })
+      logger.info({ roomId, displayName }, 'websocket open sending join_room')
+      send({ type: 'join_room', roomId, displayName })
     }
     ws.onmessage = (event) => {
       let msg: ServerMessage
@@ -107,7 +220,10 @@ export function mountGameSession(opts: { host: HTMLElement; gameId: string }): G
         return
       }
       logger.debug({ type: msg.type }, 'server message')
-      if (msg.type === 'game_state') renderBoard(msg.state, dropPiece, requestNewGame, displayName)
+      if (msg.type === 'room_state') {
+        lastSnapshot = msg.snapshot
+        if (phase === 'play') paintBoardArea()
+      }
       if (msg.type === 'error') {
         logger.warn({ message: msg.message }, 'server error')
         alert(msg.message)
@@ -122,13 +238,13 @@ export function mountGameSession(opts: { host: HTMLElement; gameId: string }): G
   }
 
   function shell(): TemplateResult {
-    const shareUrl = `${location.origin}/room/${gameId}`
+    const shareUrl = `${location.origin}/room/${roomId}`
 
     return html`
       <div class="flex w-full max-w-4xl flex-col items-stretch">
         <div
           class="mb-6 flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm sm:flex-row sm:items-start sm:justify-between sm:p-5"
-          aria-label="Table details"
+          aria-label="Room details"
         >
           <div class="min-w-0 flex-1">
             <button
@@ -139,10 +255,10 @@ export function mountGameSession(opts: { host: HTMLElement; gameId: string }): G
                 navigateHome()
               }}
             >
-              ← Leave table
+              ← Leave room
             </button>
             <p class="mt-2 font-mono text-xs leading-relaxed text-zinc-600">
-              Id <span class="break-all text-zinc-800 select-all">${gameId}</span>
+              Room <span class="break-all text-zinc-800 select-all">${roomId}</span>
             </p>
           </div>
           <div class="min-w-0 sm:max-w-[55%] sm:text-right">
@@ -187,7 +303,7 @@ export function mountGameSession(opts: { host: HTMLElement; gameId: string }): G
                   e.preventDefault()
                   const fd = new FormData(e.target as HTMLFormElement)
                   displayName = String(fd.get('displayName') ?? '').trim() || 'Player'
-                  logger.info({ gameId, displayName }, 'starting session')
+                  logger.info({ roomId, displayName }, 'starting session')
                   setUserContext(displayName)
                   phase = 'play'
                   paint()
@@ -209,7 +325,7 @@ export function mountGameSession(opts: { host: HTMLElement; gameId: string }): G
                   type="submit"
                   class="mt-5 w-full rounded-xl bg-red-700 px-4 py-2.5 text-sm font-semibold text-white shadow transition hover:bg-red-800"
                 >
-                  Connect to table
+                  Join room
                 </button>
               </form>
             `
@@ -217,7 +333,7 @@ export function mountGameSession(opts: { host: HTMLElement; gameId: string }): G
               <div
                 id="board"
                 class="flex w-full flex-col items-center"
-                aria-label="Game board"
+                aria-label="Play area"
               ></div>
             `}
       </div>
@@ -226,6 +342,7 @@ export function mountGameSession(opts: { host: HTMLElement; gameId: string }): G
 
   function paint() {
     render(shell(), host)
+    if (phase === 'play' && lastSnapshot) paintBoardArea()
   }
 
   function destroy() {

@@ -1,2 +1,6 @@
-export * from '@/types.js'
 export * from '@/constants.js'
+export * from '@/core.js'
+export * from '@/connect4.js'
+export * from '@/ticTacToe.js'
+export * from '@/room.js'
+export * from '@/messages.js'

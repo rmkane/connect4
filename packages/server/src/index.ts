@@ -72,7 +72,7 @@ wss.on('connection', (ws) => {
   const connLog = logger.child({ conn })
   connLog.info('websocket connected')
 
-  let assignedGameId: string | null = null
+  let assignedRoomId: string | null = null
   let assignedColor: Color | null = null
 
   ws.on('message', (data) => {
@@ -91,20 +91,20 @@ wss.on('connection', (ws) => {
       return
     }
 
-    if (msg.type === 'join_game') {
-      const room = manager.getOrCreate(msg.gameId)
+    if (msg.type === 'join_room') {
+      const room = manager.getOrCreate(msg.roomId)
       const color = room.join(ws, msg.displayName)
       if (color) {
-        assignedGameId = msg.gameId
+        assignedRoomId = msg.roomId
         assignedColor = color
         connLog.info(
-          { gameId: msg.gameId, color, displayName: msg.displayName },
-          'player joined game'
+          { roomId: msg.roomId, color, displayName: msg.displayName },
+          'player joined room'
         )
       } else {
         connLog.warn(
-          { gameId: msg.gameId, displayName: msg.displayName },
-          'join rejected game full'
+          { roomId: msg.roomId, displayName: msg.displayName },
+          'join rejected room full'
         )
         ws.send(
           JSON.stringify({
@@ -116,28 +116,52 @@ wss.on('connection', (ws) => {
       }
     }
 
-    if (msg.type === 'drop_piece' && assignedGameId && assignedColor) {
-      connLog.debug(
-        { gameId: assignedGameId, color: assignedColor, column: msg.column },
-        'drop_piece'
-      )
-      manager.get(assignedGameId)?.handleDrop(assignedColor, msg.column)
-    }
-
     if (
-      msg.type === 'new_game' &&
-      assignedGameId &&
+      msg.type === 'create_game' &&
+      assignedRoomId &&
       assignedColor &&
-      msg.gameId === assignedGameId
+      msg.roomId === assignedRoomId
     ) {
-      const room = manager.get(assignedGameId)
-      if (room && !room.startNewMatch()) {
-        connLog.debug({ gameId: assignedGameId }, 'new_game rejected')
+      const room = manager.get(assignedRoomId)
+      if (room && !room.createGame(msg.kind)) {
+        connLog.debug({ roomId: assignedRoomId }, 'create_game rejected')
         ws.send(
           JSON.stringify({
             type: 'error',
             message:
-              'New game is only available after a finished round, with both players still connected at this table.',
+              'Start a game only when both seats are filled, no game is already in progress, and you are in this room.',
+          })
+        )
+      }
+    }
+
+    if (
+      msg.type === 'game_move' &&
+      assignedRoomId &&
+      assignedColor &&
+      msg.roomId === assignedRoomId
+    ) {
+      connLog.debug(
+        { roomId: assignedRoomId, color: assignedColor, gameSessionId: msg.gameSessionId },
+        'game_move'
+      )
+      manager.get(assignedRoomId)?.handleMove(assignedColor, msg.gameSessionId, msg.move)
+    }
+
+    if (
+      msg.type === 'new_round' &&
+      assignedRoomId &&
+      assignedColor &&
+      msg.roomId === assignedRoomId
+    ) {
+      const room = manager.get(assignedRoomId)
+      if (room && !room.startNewRound(msg.gameSessionId)) {
+        connLog.debug({ roomId: assignedRoomId }, 'new_round rejected')
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            message:
+              'New round is only available after a finished game, with both players still connected.',
           })
         )
       }
@@ -145,11 +169,11 @@ wss.on('connection', (ws) => {
   })
 
   ws.on('close', () => {
-    connLog.info({ gameId: assignedGameId, color: assignedColor }, 'websocket disconnected')
-    if (assignedGameId && assignedColor) {
-      const gid = assignedGameId
-      manager.get(gid)?.disconnect(assignedColor)
-      manager.removeRoomIfEmpty(gid)
+    connLog.info({ roomId: assignedRoomId, color: assignedColor }, 'websocket disconnected')
+    if (assignedRoomId && assignedColor) {
+      const rid = assignedRoomId
+      manager.get(rid)?.disconnect(assignedColor)
+      manager.removeRoomIfEmpty(rid)
     }
   })
 })

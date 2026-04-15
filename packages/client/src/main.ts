@@ -31,7 +31,7 @@ function renderRoute() {
       onCreate: () => navigateToRoom(crypto.randomUUID()),
     })
   } else {
-    session = mountGameSession({ host: app, gameId: route.gameId })
+    session = mountGameSession({ host: app, roomId: route.roomId })
   }
 }
 

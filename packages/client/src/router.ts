@@ -14,12 +14,12 @@ export function parseGameIdInput(raw: string): string | null {
   return null
 }
 
-export type AppRoute = { type: 'home' } | { type: 'room'; gameId: string }
+export type AppRoute = { type: 'home' } | { type: 'room'; roomId: string }
 
 export function parseRoute(): AppRoute {
   const roomPath = location.pathname.match(/^\/room\/([^/]+)\/?$/i)
   if (roomPath?.[1]) {
-    if (isUuid(roomPath[1])) return { type: 'room', gameId: roomPath[1].toLowerCase() }
+    if (isUuid(roomPath[1])) return { type: 'room', roomId: roomPath[1].toLowerCase() }
     history.replaceState(null, '', '/')
     return { type: 'home' }
   }
@@ -28,7 +28,7 @@ export function parseRoute(): AppRoute {
   if (oldGamePath?.[1] && isUuid(oldGamePath[1])) {
     const id = oldGamePath[1].toLowerCase()
     history.replaceState(null, '', `/room/${id}`)
-    return { type: 'room', gameId: id }
+    return { type: 'room', roomId: id }
   }
   if (oldGamePath?.[1]) {
     history.replaceState(null, '', '/')
@@ -39,7 +39,7 @@ export function parseRoute(): AppRoute {
   if (legacy && isUuid(legacy)) {
     const id = legacy.toLowerCase()
     history.replaceState(null, '', `/room/${id}`)
-    return { type: 'room', gameId: id }
+    return { type: 'room', roomId: id }
   }
 
   if (legacy && !isUuid(legacy)) {
@@ -55,8 +55,8 @@ export function initRouter(onRoute: () => void) {
   rerender = onRoute
 }
 
-export function navigateToRoom(gameId: string) {
-  history.pushState(null, '', `/room/${gameId}`)
+export function navigateToRoom(roomId: string) {
+  history.pushState(null, '', `/room/${roomId}`)
   rerender?.()
 }
 

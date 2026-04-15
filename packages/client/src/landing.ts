@@ -10,7 +10,7 @@ export type LandingHandle = { destroy: () => void }
 
 function roomMatchesFilter(room: PublicRoomSummary, q: string): boolean {
   if (!q) return true
-  const id = room.gameId.toLowerCase()
+  const id = room.roomId.toLowerCase()
   const r = (room.redDisplayName ?? '').toLowerCase()
   const y = (room.yellowDisplayName ?? '').toLowerCase()
   return id.includes(q) || r.includes(q) || y.includes(q)
@@ -166,10 +166,10 @@ export function mountLanding(opts: { host: HTMLElement; onCreate: () => void }):
                                     <button
                                       type="button"
                                       class="flex w-full flex-col items-stretch gap-0.5 rounded-lg border border-zinc-200 bg-zinc-50/80 px-3 py-2.5 text-left text-sm transition hover:border-zinc-300 hover:bg-white"
-                                      @click=${() => navigateToRoom(room.gameId)}
+                                      @click=${() => navigateToRoom(room.roomId)}
                                     >
                                       <span class="font-mono text-xs text-zinc-600"
-                                        >${room.gameId}</span
+                                        >${room.roomId}</span
                                       >
                                       <span class="text-zinc-900">${waitingSubtitle(room)}</span>
                                     </button>
@@ -180,7 +180,7 @@ export function mountLanding(opts: { host: HTMLElement; onCreate: () => void }):
                                       aria-label="Table in progress, full"
                                     >
                                       <span class="font-mono text-xs text-zinc-500"
-                                        >${room.gameId}</span
+                                        >${room.roomId}</span
                                       >
                                       <span>${inProgressSubtitle(room)}</span>
                                     </div>

@@ -4,7 +4,7 @@ export function makeBoard(): Cell[][] {
   return Array.from({ length: ROWS }, () => Array(COLS).fill(null))
 }
 
-// Returns the row the piece lands on, or -1 if column is full
+/** Returns the row the piece lands on, or -1 if column is full */
 export function dropPiece(board: Cell[][], col: number, color: Color): number {
   for (let row = ROWS - 1; row >= 0; row--) {
     if (board[row][col] === null) {
