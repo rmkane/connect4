@@ -1,3 +1,4 @@
+export * from '@/chat.js'
 export * from '@/constants.js'
 export * from '@/core.js'
 export * from '@/connect4.js'

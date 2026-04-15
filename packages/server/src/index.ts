@@ -2,8 +2,9 @@ import 'dotenv/config'
 import { createServer } from 'http'
 import { type RawData, WebSocketServer } from 'ws'
 
-import { ClientMessage, type Color, type PlayerId } from '@connect4/shared'
+import { CHAT_MIN_INTERVAL_MS, ClientMessage, type Color, type PlayerId } from '@connect4/shared'
 
+import { GlobalChat } from '@/chat/GlobalChat.js'
 import { serverConfig } from '@/config.js'
 import { GameManager } from '@/game/GameManager.js'
 import { logger } from '@/logger.js'
@@ -16,6 +17,7 @@ function wsPayloadBytes(data: RawData): number {
 }
 
 const manager = new GameManager()
+const globalChat = new GlobalChat()
 
 const corsJsonHeaders = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -75,6 +77,9 @@ wss.on('connection', (ws) => {
   let assignedRoomId: string | null = null
   let assignedPlayerId: PlayerId | null = null
   let assignedSeat: Color | null = null
+  let subscribedGlobalChat = false
+  let lastChatAtGlobal = 0
+  let lastChatAtRoom = 0
 
   ws.on('message', (data) => {
     const size = wsPayloadBytes(data)
@@ -108,6 +113,7 @@ wss.on('connection', (ws) => {
           },
           'player joined room'
         )
+        manager.get(msg.roomId)?.sendChatHistoryTo(ws)
       } else {
         connLog.warn(
           { roomId: msg.roomId, displayName: msg.displayName },
@@ -209,9 +215,39 @@ wss.on('connection', (ws) => {
         )
       }
     }
+
+    if (msg.type === 'chat_subscribe_global') {
+      globalChat.subscribe(ws, msg.displayName)
+      subscribedGlobalChat = true
+      connLog.debug('global chat subscribe')
+    }
+
+    if (msg.type === 'chat_send' && msg.scope === 'global') {
+      if (!subscribedGlobalChat) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Join global chat first (subscribe).' }))
+        return
+      }
+      const now = Date.now()
+      if (now - lastChatAtGlobal < CHAT_MIN_INTERVAL_MS) return
+      const sub = globalChat.getSubscriber(ws)
+      if (!sub) return
+      if (!globalChat.broadcastMessage(msg.text, sub)) return
+      lastChatAtGlobal = now
+    }
+
+    if (msg.type === 'chat_send' && msg.scope === 'room') {
+      if (!assignedRoomId || !assignedPlayerId || msg.roomId !== assignedRoomId) return
+      const now = Date.now()
+      if (now - lastChatAtRoom < CHAT_MIN_INTERVAL_MS) return
+      const room = manager.get(assignedRoomId)
+      if (room && room.sendRoomChat(assignedPlayerId, msg.text)) {
+        lastChatAtRoom = now
+      }
+    }
   })
 
   ws.on('close', () => {
+    if (subscribedGlobalChat) globalChat.unsubscribe(ws)
     connLog.info(
       { roomId: assignedRoomId, seat: assignedSeat, playerId: assignedPlayerId },
       'websocket disconnected'

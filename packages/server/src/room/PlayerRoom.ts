@@ -5,6 +5,7 @@ import { WebSocket } from 'ws'
 
 import type {
   AnyGameState,
+  ChatMessagePayload,
   Color,
   Connect4State,
   GameKind,
@@ -16,6 +17,7 @@ import type {
   ServerMessage,
   TicTacToeState,
 } from '@connect4/shared'
+import { CHAT_HISTORY_LIMIT, sanitizeChatText } from '@connect4/shared'
 
 import * as connect4 from '@/games/connect4/rules.js'
 import * as ticTacToe from '@/games/ticTacToe/rules.js'
@@ -30,6 +32,7 @@ export class PlayerRoom {
   games: GameListing[] = []
   activeGame: AnyGameState | null = null
   sockets: Map<Color, WebSocket> = new Map()
+  private chatHistory: ChatMessagePayload[] = []
   private readonly log: Logger
 
   constructor(public readonly roomId: string) {
@@ -62,6 +65,52 @@ export class PlayerRoom {
       snapshot: RoomSnapshot
     })
     this.sockets.forEach((ws) => ws.readyState === WebSocket.OPEN && ws.send(payload))
+  }
+
+  private pushRoomChat(msg: ChatMessagePayload) {
+    this.chatHistory.push(msg)
+    if (this.chatHistory.length > CHAT_HISTORY_LIMIT) {
+      this.chatHistory.splice(0, this.chatHistory.length - CHAT_HISTORY_LIMIT)
+    }
+  }
+
+  /** Recent room chat for a connection that just joined. */
+  sendChatHistoryTo(ws: WebSocket) {
+    if (this.chatHistory.length === 0) return
+    const payload = JSON.stringify({
+      type: 'chat_history',
+      scope: 'room' as const,
+      roomId: this.roomId,
+      messages: [...this.chatHistory],
+    })
+    if (ws.readyState === WebSocket.OPEN) ws.send(payload)
+  }
+
+  sendRoomChat(playerId: PlayerId, text: string): boolean {
+    if (!this.isSeatedPlayer(playerId)) return false
+    const clean = sanitizeChatText(text)
+    if (!clean) return false
+
+    const info =
+      this.seats.red?.id === playerId
+        ? this.seats.red
+        : this.seats.yellow?.id === playerId
+          ? this.seats.yellow
+          : null
+    if (!info) return false
+
+    const msg: ChatMessagePayload = {
+      scope: 'room',
+      roomId: this.roomId,
+      senderId: playerId,
+      displayName: info.displayName,
+      text: clean,
+      sentAt: Date.now(),
+    }
+    this.pushRoomChat(msg)
+    const payload = JSON.stringify({ type: 'chat_message', ...msg })
+    this.sockets.forEach((ws) => ws.readyState === WebSocket.OPEN && ws.send(payload))
+    return true
   }
 
   private listingFor(sessionId: string): GameListing | undefined {
@@ -300,6 +349,7 @@ export class PlayerRoom {
       this.matchPoints.clear()
       this.games = []
       this.activeGame = null
+      this.chatHistory = []
     }
 
     this.log.info({ seat }, 'player disconnected')

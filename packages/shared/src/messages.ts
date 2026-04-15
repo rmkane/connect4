@@ -1,3 +1,4 @@
+import type { ChatMessagePayload } from '@/chat.js'
 import type { Color, PlayerId } from '@/core.js'
 import type { GameKind, RoomSnapshot } from '@/room.js'
 
@@ -14,6 +15,10 @@ export type ClientMessage =
   | { type: 'surrender'; roomId: string; gameSessionId: string }
   /** After a finished game, return to the “choose a game” screen (either player may send). */
   | { type: 'dismiss_completed_game'; roomId: string }
+  /** Join the global lobby chat on this socket (no account required). */
+  | { type: 'chat_subscribe_global'; displayName: string }
+  | { type: 'chat_send'; scope: 'room'; roomId: string; text: string }
+  | { type: 'chat_send'; scope: 'global'; text: string }
 
 // Messages server → client
 export type ServerMessage =
@@ -21,3 +26,10 @@ export type ServerMessage =
   /** Sent only to the connection that successfully `join_room`d (includes stable `playerId`). */
   | { type: 'joined_room'; roomId: string; playerId: PlayerId; seat: Color }
   | { type: 'error'; message: string }
+  | ({ type: 'chat_message' } & ChatMessagePayload)
+  | {
+      type: 'chat_history'
+      scope: 'room' | 'global'
+      roomId?: string
+      messages: ChatMessagePayload[]
+    }

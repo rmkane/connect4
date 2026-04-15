@@ -1,12 +1,15 @@
 import { type TemplateResult, html, nothing, render } from 'lit'
+import { live } from 'lit/directives/live.js'
 
 import type {
+  ChatMessagePayload,
   ClientMessage,
   GameKind,
   PlayerId,
   RoomSnapshot,
   ServerMessage,
 } from '@connect4/shared'
+import { CHAT_MAX_TEXT_LENGTH } from '@connect4/shared'
 
 import { clientConfig } from '@/config.js'
 import { logger } from '@/logger.js'
@@ -16,6 +19,14 @@ import { renderConnect4View } from '@/views/connect4View.js'
 import { renderTicTacToeView } from '@/views/ticTacToeView.js'
 
 export type GameSessionHandle = { destroy: () => void }
+
+function formatChatTime(ts: number): string {
+  try {
+    return new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return ''
+  }
+}
 
 function canUseWebShare(): boolean {
   return typeof navigator !== 'undefined' && typeof navigator.share === 'function'
@@ -28,11 +39,87 @@ export function mountGameSession(opts: { host: HTMLElement; roomId: string }): G
   let phase: 'name' | 'play' = 'name'
   let lastSnapshot: RoomSnapshot | null = null
   let myPlayerId: PlayerId | null = null
+  let roomChatMessages: ChatMessagePayload[] = []
+  let roomChatDraft = ''
   let inviteFeedback: '' | 'copied' | 'failed' = ''
   let inviteFeedbackTimer: ReturnType<typeof setTimeout> | null = null
 
   function send(msg: ClientMessage) {
     ws?.send(JSON.stringify(msg))
+  }
+
+  function paintRoomChat() {
+    const el = document.getElementById('room-chat')
+    if (!el || phase !== 'play') return
+    render(
+      html`
+        <section
+          class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm"
+          aria-label="Room chat"
+        >
+          <h2 class="text-sm font-semibold text-zinc-900">Room chat</h2>
+          <p class="mt-1 text-xs text-zinc-500">
+            Only people seated in this room see these messages.
+          </p>
+          <div
+            class="mt-3 max-h-36 overflow-y-auto rounded-lg border border-zinc-100 bg-zinc-50 p-2 text-sm"
+            role="log"
+            aria-live="polite"
+          >
+            ${roomChatMessages.length === 0
+              ? html`<p class="py-2 text-xs text-zinc-500">No messages yet.</p>`
+              : roomChatMessages.map(
+                  (m) => html`
+                    <p class="border-b border-zinc-100 py-1 last:border-0">
+                      <span class="text-xs text-zinc-400">${formatChatTime(m.sentAt)}</span>
+                      <span
+                        class="${m.senderId === myPlayerId
+                          ? 'font-semibold text-red-800'
+                          : 'font-medium text-zinc-800'}"
+                        >${m.displayName}</span
+                      >:
+                      <span class="text-zinc-700">${m.text}</span>
+                    </p>
+                  `
+                )}
+          </div>
+          <div class="mt-2 flex gap-2">
+            <input
+              type="text"
+              maxlength=${CHAT_MAX_TEXT_LENGTH}
+              placeholder="Message to room…"
+              class="min-w-0 flex-1 rounded-lg border border-zinc-300 px-2 py-2 text-sm text-zinc-900"
+              .value=${live(roomChatDraft)}
+              @input=${(e: Event) => {
+                roomChatDraft = (e.target as HTMLInputElement).value
+              }}
+              @keydown=${(e: KeyboardEvent) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  sendRoomChat()
+                }
+              }}
+            />
+            <button
+              type="button"
+              class="shrink-0 rounded-lg bg-red-700 px-3 py-2 text-sm font-semibold text-white hover:bg-red-800"
+              @click=${() => sendRoomChat()}
+            >
+              Send
+            </button>
+          </div>
+        </section>
+      `,
+      el
+    )
+  }
+
+  function sendRoomChat() {
+    const t = roomChatDraft.trim()
+    if (!t || !myPlayerId) return
+    send({ type: 'chat_send', scope: 'room', roomId, text: t })
+    roomChatDraft = ''
+    paintRoomChat()
   }
 
   function paintBoardArea() {
@@ -245,10 +332,30 @@ export function mountGameSession(opts: { host: HTMLElement; roomId: string }): G
         myPlayerId = msg.playerId
         logger.info({ playerId: msg.playerId, seat: msg.seat }, 'assigned player id')
         if (phase === 'play' && lastSnapshot) paintBoardArea()
+        if (phase === 'play') paintRoomChat()
       }
       if (msg.type === 'room_state') {
         lastSnapshot = msg.snapshot
         if (phase === 'play') paintBoardArea()
+        if (phase === 'play') paintRoomChat()
+      }
+      if (msg.type === 'chat_history' && msg.scope === 'room' && msg.roomId === roomId) {
+        roomChatMessages = msg.messages.slice(-100)
+        if (phase === 'play') paintRoomChat()
+      }
+      if (msg.type === 'chat_message' && msg.scope === 'room' && msg.roomId === roomId) {
+        roomChatMessages = [
+          ...roomChatMessages.slice(-99),
+          {
+            scope: 'room',
+            roomId: msg.roomId,
+            senderId: msg.senderId,
+            displayName: msg.displayName,
+            text: msg.text,
+            sentAt: msg.sentAt,
+          },
+        ]
+        if (phase === 'play') paintRoomChat()
       }
       if (msg.type === 'error') {
         logger.warn({ message: msg.message }, 'server error')
@@ -361,6 +468,7 @@ export function mountGameSession(opts: { host: HTMLElement; roomId: string }): G
                 class="flex w-full flex-col items-center"
                 aria-label="Play area"
               ></div>
+              <div id="room-chat" class="mt-6 w-full"></div>
             `}
       </div>
     `
@@ -369,6 +477,7 @@ export function mountGameSession(opts: { host: HTMLElement; roomId: string }): G
   function paint() {
     render(shell(), host)
     if (phase === 'play' && lastSnapshot) paintBoardArea()
+    if (phase === 'play') paintRoomChat()
   }
 
   function destroy() {
@@ -376,6 +485,8 @@ export function mountGameSession(opts: { host: HTMLElement; roomId: string }): G
     ws?.close()
     ws = null
     myPlayerId = null
+    roomChatMessages = []
+    roomChatDraft = ''
     setUserContext(null)
     render(nothing, host)
   }
