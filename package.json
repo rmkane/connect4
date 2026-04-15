@@ -1,0 +1,22 @@
+{
+  "name": "connect4",
+  "private": true,
+  "packageManager": "pnpm@10.18.3",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "dev:server": "pnpm --filter @connect4/server run dev",
+    "dev:client": "pnpm --filter @connect4/client run dev",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@trivago/prettier-plugin-sort-imports": "^6.0.2",
+    "eslint": "^10.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.2",
+    "prettier-plugin-tailwindcss": "^0.7.2",
+    "typescript-eslint": "^8.58.2"
+  }
+}

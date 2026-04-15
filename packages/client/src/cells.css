@@ -1,0 +1,17 @@
+/* Piece discs — colors stay custom; layout uses Tailwind in TS */
+.cell {
+  border-radius: 9999px;
+  border: 2px solid #333;
+}
+
+.cell.empty {
+  background: #e8e8e8;
+}
+
+.cell.red {
+  background: #c62828;
+}
+
+.cell.yellow {
+  background: #f9a825;
+}

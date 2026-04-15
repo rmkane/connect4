@@ -1,0 +1,20 @@
+{
+  "name": "@connect4/client",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@connect4/shared": "workspace:*",
+    "consola": "^3.4.2",
+    "lit": "^3.3.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.8"
+  }
+}
