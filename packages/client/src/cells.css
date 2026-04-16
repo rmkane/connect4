@@ -8,10 +8,11 @@
   background: #e8e8e8;
 }
 
-.cell.red {
+/* Roster slot 0 / 1 — colors are presentation only (not table “seat” names). */
+.cell.disc-0 {
   background: #c62828;
 }
 
-.cell.yellow {
+.cell.disc-1 {
   background: #f9a825;
 }

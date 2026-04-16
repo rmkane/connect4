@@ -1,4 +1,5 @@
 import type { PublicRoomSummary } from '@gameroom/shared'
+import { ROOM_TABLE_CAPACITY, seatedPlayerCount } from '@gameroom/shared'
 
 import { logger } from '@/logger.js'
 import { PlayerRoom } from '@/room/PlayerRoom.js'
@@ -6,31 +7,31 @@ import { PlayerRoom } from '@/room/PlayerRoom.js'
 export class GameManager {
   private rooms = new Map<string, PlayerRoom>()
 
-  /** Waiting tables with a free seat, plus full tables (two seated). */
+  /** Waiting tables with a free seat, plus full tables (all seats taken). */
   listLobbySummaries(): PublicRoomSummary[] {
     const list: PublicRoomSummary[] = []
     for (const room of this.rooms.values()) {
       const snap = room.getSnapshot()
-      const redDisplayName = snap.seats.red?.displayName ?? null
-      const yellowDisplayName = snap.seats.yellow?.displayName ?? null
-      const occupied = (redDisplayName ? 1 : 0) + (yellowDisplayName ? 1 : 0)
+      const seatDisplayNames = [
+        snap.seats[0]?.displayName ?? null,
+        snap.seats[1]?.displayName ?? null,
+      ] as const
+      const occupied = seatedPlayerCount(snap.seats)
       const roomTitle = snap.roomTitle.trim() ? snap.roomTitle : undefined
 
-      if (occupied < 2) {
+      if (occupied < ROOM_TABLE_CAPACITY) {
         list.push({
           roomId: room.roomId,
           ...(roomTitle ? { roomTitle } : {}),
           status: 'waiting',
-          redDisplayName,
-          yellowDisplayName,
+          seatDisplayNames,
         })
       } else {
         list.push({
           roomId: room.roomId,
           ...(roomTitle ? { roomTitle } : {}),
           status: 'in_progress',
-          redDisplayName,
-          yellowDisplayName,
+          seatDisplayNames,
         })
       }
     }
@@ -58,7 +59,7 @@ export class GameManager {
   removeRoomIfEmpty(roomId: string): void {
     const room = this.rooms.get(roomId)
     if (!room) return
-    if (room.seats.red || room.seats.yellow) return
+    if (room.seats[0] || room.seats[1]) return
     this.rooms.delete(roomId)
     logger.info({ roomId }, 'room removed (empty)')
   }

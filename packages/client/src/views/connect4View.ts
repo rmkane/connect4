@@ -1,10 +1,11 @@
 import { type TemplateResult, html, nothing, render } from 'lit'
 
 import type { Connect4State, PlayerId, RoomSnapshot } from '@gameroom/shared'
+import { roomTableIsFull } from '@gameroom/shared'
 
 import { confirmModal, infoModal, modalOpenButton, openModalById } from '@/views/appModal.js'
 import {
-  connect4GameSide,
+  connect4RosterSlot,
   displayNameFor,
   matchScoreFor,
   pieceCellClass,
@@ -13,24 +14,24 @@ import {
 const C4_RULES_DIALOG_ID = 'c4-rules-dialog'
 const C4_SURRENDER_DIALOG_ID = 'c4-surrender-dialog'
 
-/** Match wins: you vs opponent when seated; otherwise Red vs Yellow with names. */
+/** Match wins: you vs opponent when seated; otherwise both roster sides with names. */
 function connect4MatchWinsBanner(
   snapshot: RoomSnapshot,
-  redId: PlayerId,
-  yellowId: PlayerId,
+  roster0: PlayerId,
+  roster1: PlayerId,
   myPlayerId: PlayerId | null
 ): TemplateResult {
-  const rScore = matchScoreFor(snapshot, redId)
-  const yScore = matchScoreFor(snapshot, yellowId)
-  const rName = displayNameFor(snapshot, redId)
-  const yName = displayNameFor(snapshot, yellowId)
+  const rScore = matchScoreFor(snapshot, roster0)
+  const yScore = matchScoreFor(snapshot, roster1)
+  const rName = displayNameFor(snapshot, roster0)
+  const yName = displayNameFor(snapshot, roster1)
 
-  const pill = (label: string, score: number, tone: 'red' | 'amber') => {
+  const pill = (label: string, score: number, tone: 'slot0' | 'slot1') => {
     const ring =
-      tone === 'red'
+      tone === 'slot0'
         ? 'border-red-200 ring-1 ring-red-100'
         : 'border-amber-200 ring-1 ring-amber-100'
-    const num = tone === 'red' ? 'text-red-700' : 'text-amber-700'
+    const num = tone === 'slot0' ? 'text-red-700' : 'text-amber-700'
     return html`
       <div
         class="${ring} flex min-w-0 flex-1 flex-col items-center rounded-md border bg-white px-2 py-1 text-center shadow-sm"
@@ -43,33 +44,33 @@ function connect4MatchWinsBanner(
     `
   }
 
-  if (myPlayerId === redId) {
+  if (myPlayerId === roster0) {
     return html`
       <div
         class="ml-auto flex max-w-52 min-w-0 shrink-0 items-stretch gap-1.5 sm:max-w-60"
         role="status"
         aria-label=${`Match wins in this room: you ${rScore}, ${yName} ${yScore}`}
       >
-        ${pill('You', rScore, 'red')}
+        ${pill('You', rScore, 'slot0')}
         <span class="self-center text-[10px] font-semibold text-zinc-400" aria-hidden="true"
           >vs</span
         >
-        ${pill('Opp', yScore, 'amber')}
+        ${pill('Opp', yScore, 'slot1')}
       </div>
     `
   }
-  if (myPlayerId === yellowId) {
+  if (myPlayerId === roster1) {
     return html`
       <div
         class="ml-auto flex max-w-52 min-w-0 shrink-0 items-stretch gap-1.5 sm:max-w-60"
         role="status"
         aria-label=${`Match wins in this room: you ${yScore}, ${rName} ${rScore}`}
       >
-        ${pill('You', yScore, 'amber')}
+        ${pill('You', yScore, 'slot1')}
         <span class="self-center text-[10px] font-semibold text-zinc-400" aria-hidden="true"
           >vs</span
         >
-        ${pill('Opp', rScore, 'red')}
+        ${pill('Opp', rScore, 'slot0')}
       </div>
     `
   }
@@ -77,21 +78,17 @@ function connect4MatchWinsBanner(
     <div
       class="ml-auto flex max-w-52 min-w-0 shrink-0 items-stretch gap-1.5 sm:max-w-60"
       role="status"
-      aria-label=${`Match wins: Red ${rName} ${rScore}, Yellow ${yName} ${yScore}`}
+      aria-label=${`Match wins: ${rName} (side A) ${rScore}, ${yName} (side B) ${yScore}`}
     >
-      ${pill('Red', rScore, 'red')}
+      ${pill('Side A', rScore, 'slot0')}
       <span class="self-center text-[10px] font-semibold text-zinc-400" aria-hidden="true">vs</span>
-      ${pill('Yellow', yScore, 'amber')}
+      ${pill('Side B', yScore, 'slot1')}
     </div>
   `
 }
 
 function canDrop(state: Connect4State, myPlayerId: PlayerId | null): boolean {
   return state.status === 'in_progress' && myPlayerId !== null && state.currentTurn === myPlayerId
-}
-
-function snapshotSeatsFilled(snapshot: RoomSnapshot): boolean {
-  return Boolean(snapshot.seats.red && snapshot.seats.yellow)
 }
 
 function dropTitle(
@@ -108,9 +105,9 @@ function dropTitle(
   return 'Drop a piece in this column'
 }
 
-function pieceSideLabel(state: Connect4State, playerId: PlayerId): 'Red' | 'Yellow' | '—' {
-  if (state.players[0] === playerId) return 'Red'
-  if (state.players[1] === playerId) return 'Yellow'
+function pieceSideLabel(state: Connect4State, playerId: PlayerId): 'Side A' | 'Side B' | '—' {
+  if (state.players[0] === playerId) return 'Side A'
+  if (state.players[1] === playerId) return 'Side B'
   return '—'
 }
 
@@ -121,9 +118,9 @@ function youBannerLine(
 ): string {
   if (myPlayerId === null) return 'You: spectating'
   const n = displayNameFor(snapshot, myPlayerId)
-  const side = connect4GameSide(state.players, myPlayerId)
-  if (!side) return `You: ${n}`
-  return `You: ${n} (${side === 'red' ? 'Red' : 'Yellow'})`
+  const slot = connect4RosterSlot(state.players, myPlayerId)
+  if (slot === null) return `You: ${n}`
+  return `You: ${n} (${slot === 0 ? 'Side A' : 'Side B'})`
 }
 
 function turnBannerLine(
@@ -155,10 +152,10 @@ function detailLine(
   snapshot: RoomSnapshot,
   myPlayerId: PlayerId | null
 ): string | null {
-  const side = connect4GameSide(state.players, myPlayerId)
-  if (side) {
-    const label = side === 'red' ? 'Red' : 'Yellow'
-    const bits: string[] = [`Your color: ${label}.`]
+  const slot = connect4RosterSlot(state.players, myPlayerId)
+  if (slot !== null) {
+    const label = slot === 0 ? 'Side A' : 'Side B'
+    const bits: string[] = [`Your discs: ${label}.`]
     if (state.status === 'completed' && state.result && state.result.reason !== 'draw') {
       if (state.result.reason === 'surrender') {
         bits.push(
@@ -190,16 +187,13 @@ function boardTemplate(
 ): TemplateResult {
   const allowDrop = canDrop(state, myPlayerId)
   const showCompletedActions =
-    state.status === 'completed' &&
-    myPlayerId !== null &&
-    snapshotSeatsFilled(snapshot) &&
-    Boolean(snapshot.seats.red && snapshot.seats.yellow)
+    state.status === 'completed' && myPlayerId !== null && roomTableIsFull(snapshot.seats)
   const showRecapButton =
-    state.status === 'completed' && recap !== null && recap.show && snapshotSeatsFilled(snapshot)
+    state.status === 'completed' && recap !== null && recap.show && roomTableIsFull(snapshot.seats)
   const showSurrender = state.status === 'in_progress' && myPlayerId !== null
   const showDropRow = state.status === 'in_progress'
   const cols = state.board[0].length
-  const [redId, yellowId] = state.players
+  const [p0, p1] = state.players
 
   const dropRow = showDropRow
     ? Array.from({ length: cols }, (_, c) => {
@@ -240,15 +234,14 @@ function boardTemplate(
         to connect <strong>four in a row</strong> horizontally, vertically, or diagonally wins.
       </p>
       <p class="text-xs text-zinc-500">
-        Red and yellow are assigned at random each game. Who moves first is random too.
+        The two disc colors are assigned at random each game. Who moves first is random too.
       </p>
       <div class="border-t border-zinc-200 pt-3 text-xs text-zinc-700">
         <p>
-          <span class="font-semibold text-red-700">Red</span>: ${displayNameFor(snapshot, redId)}
+          <span class="font-semibold text-red-700">Side A</span>: ${displayNameFor(snapshot, p0)}
         </p>
         <p class="mt-1">
-          <span class="font-semibold text-amber-700">Yellow</span>:
-          ${displayNameFor(snapshot, yellowId)}
+          <span class="font-semibold text-amber-700">Side B</span>: ${displayNameFor(snapshot, p1)}
         </p>
       </div>
       ${detail
@@ -270,7 +263,7 @@ function boardTemplate(
         <span class="min-w-0 truncate sm:max-w-[40%]" title=${youLine}>${youLine}</span>
         <span class="hidden h-3 w-px shrink-0 bg-zinc-300 md:block" aria-hidden="true"></span>
         <span class="min-w-0 flex-1 truncate text-zinc-700" title=${turnLine}>${turnLine}</span>
-        ${connect4MatchWinsBanner(snapshot, redId, yellowId, myPlayerId)}
+        ${connect4MatchWinsBanner(snapshot, p0, p1, myPlayerId)}
       </div>
 
       <div class="flex w-full max-w-[min(100%,28rem)] flex-wrap items-center justify-center gap-2">

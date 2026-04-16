@@ -14,7 +14,9 @@ import type {
 import {
   CHAT_HISTORY_LIMIT,
   CHAT_MAX_TEXT_LENGTH,
+  ROOM_TABLE_CAPACITY,
   SYSTEM_ANNOUNCEMENT_PLAYER_ID,
+  roomTableIsFull,
 } from '@gameroom/shared'
 
 import { chatLogWasFollowingTail, scrollChatLogToBottomById } from '@/chatScroll.js'
@@ -56,11 +58,9 @@ function otherSeatedPlayer(
   s: RoomSnapshot,
   myId: PlayerId
 ): { id: PlayerId; displayName: string } | null {
-  if (s.seats.red?.id === myId && s.seats.yellow) {
-    return { id: s.seats.yellow.id, displayName: s.seats.yellow.displayName }
-  }
-  if (s.seats.yellow?.id === myId && s.seats.red) {
-    return { id: s.seats.red.id, displayName: s.seats.red.displayName }
+  for (let i = 0; i < ROOM_TABLE_CAPACITY; i++) {
+    const p = s.seats[i]
+    if (p && p.id !== myId) return { id: p.id, displayName: p.displayName }
   }
   return null
 }
@@ -232,7 +232,7 @@ export function mountGameSession(opts: {
     if (!el || !lastSnapshot) return
 
     const s = lastSnapshot
-    const bothSeated = Boolean(s.seats.red && s.seats.yellow)
+    const bothSeated = roomTableIsFull(s.seats)
 
     if (!bothSeated) {
       render(preGameWaiting(s), el)
@@ -310,8 +310,8 @@ export function mountGameSession(opts: {
   }
 
   function preGameWaiting(s: RoomSnapshot): TemplateResult {
-    const r = s.seats.red?.displayName ?? null
-    const y = s.seats.yellow?.displayName ?? null
+    const s0 = s.seats[0]?.displayName ?? null
+    const s1 = s.seats[1]?.displayName ?? null
 
     return html`
       <div
@@ -320,15 +320,17 @@ export function mountGameSession(opts: {
       >
         <h2 class="text-lg font-semibold text-zinc-900">Waiting for opponent</h2>
         <p class="mt-3 text-sm text-zinc-600">
-          ${r && !y
-            ? html`Invite someone for <span class="font-medium text-amber-700">yellow</span>.`
-            : !r && y
-              ? html`Waiting for <span class="font-medium text-red-700">red</span> to join.`
+          ${s0 && !s1
+            ? html`Invite someone to take
+                <span class="font-medium text-amber-800">table seat 2</span>.`
+            : !s0 && s1
+              ? html`Waiting for <span class="font-medium text-zinc-900">table seat 1</span> to
+                  fill.`
               : html`Share the invite link so someone can take the other seat.`}
         </p>
         <div class="mt-4 text-left text-sm text-zinc-700">
-          <p><span class="font-medium text-red-700">Red</span>: ${r ?? '—'}</p>
-          <p class="mt-1"><span class="font-medium text-amber-700">Yellow</span>: ${y ?? '—'}</p>
+          <p><span class="font-medium text-zinc-900">Seat 1</span>: ${s0 ?? '—'}</p>
+          <p class="mt-1"><span class="font-medium text-zinc-900">Seat 2</span>: ${s1 ?? '—'}</p>
         </div>
       </div>
     `

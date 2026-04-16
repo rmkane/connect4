@@ -1,6 +1,6 @@
 import { type TemplateResult, html } from 'lit'
 
-import type { GameMetricsSummary, PlayerId } from '@gameroom/shared'
+import type { GameMetricsSummary, PlayerId, TableSeatIndex } from '@gameroom/shared'
 
 import { APP_MODAL_PANEL_WIDE_CLASS, closeModalById } from '@/views/appModal.js'
 
@@ -41,9 +41,9 @@ function outcomeDescription(s: GameMetricsSummary): string {
   return 'Game completed.'
 }
 
-function seatLabel(seat: 'red' | 'yellow' | null): string {
-  if (seat === 'red') return 'Red seat'
-  if (seat === 'yellow') return 'Yellow seat'
+function seatLabel(seatIndex: TableSeatIndex | null): string {
+  if (seatIndex === 0) return 'Table seat 1'
+  if (seatIndex === 1) return 'Table seat 2'
   return '—'
 }
 
@@ -86,7 +86,7 @@ export function gameSummaryDialog(
               class="border-b border-zinc-200 bg-zinc-50 text-xs font-semibold tracking-wide text-zinc-600 uppercase"
             >
               <th class="px-3 py-2">Player</th>
-              <th class="px-3 py-2">Seat</th>
+              <th class="px-3 py-2">Table</th>
               <th class="px-3 py-2 text-right">Turns</th>
               <th class="px-3 py-2 text-right">Avg / turn</th>
               <th class="px-3 py-2 text-right">Total think</th>
@@ -101,7 +101,7 @@ export function gameSummaryDialog(
                 return html`
                   <tr class="border-b border-zinc-100 last:border-0">
                     <td class="px-3 py-2 font-medium text-zinc-900">${row.displayName}</td>
-                    <td class="px-3 py-2 text-zinc-600">${seatLabel(row.seat)}</td>
+                    <td class="px-3 py-2 text-zinc-600">${seatLabel(row.seatIndex)}</td>
                     <td colspan="5" class="px-3 py-2 text-zinc-500">—</td>
                   </tr>
                 `
@@ -109,7 +109,7 @@ export function gameSummaryDialog(
               return html`
                 <tr class="border-b border-zinc-100 last:border-0">
                   <td class="px-3 py-2 font-medium text-zinc-900">${row.displayName}</td>
-                  <td class="px-3 py-2 text-zinc-600">${seatLabel(row.seat)}</td>
+                  <td class="px-3 py-2 text-zinc-600">${seatLabel(row.seatIndex)}</td>
                   <td class="px-3 py-2 text-right text-zinc-800 tabular-nums">${m.turnCount}</td>
                   <td class="px-3 py-2 text-right text-zinc-800 tabular-nums">
                     ${formatDurationMs(m.avgThinkMs)}

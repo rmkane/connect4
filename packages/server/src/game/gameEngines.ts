@@ -8,25 +8,19 @@ import * as ticTacToeSession from '@/game/ticTacToeSession.js'
 /**
  * Strategy for one `GameKind`: create state, apply moves, rematch, surrender.
  *
- * **`minPlayers` / `maxPlayers`** describe how many **seated** humans must participate for
- * start / rematch (everyone at the table is in the game today). The room uses these instead
- * of hard-coded `2` where possible.
- *
- * **`create` / `startNewRound`** still take a two-id tuple: the physical table is only
- * **two seats** (`red` / `yellow`). Engines with `maxPlayers > 2` cannot start until seating
- * and this API are generalized (see `PlayerRoom.createGame`).
+ * **`minPlayers` / `maxPlayers`** bound how many seated humans must be present to start or
+ * rematch. The room passes a **roster** — ordered `PlayerId[]` of length `maxPlayers` — built
+ * from table seats (shuffled vs join order where games care). Larger titles (Hearts, poker)
+ * raise `maxPlayers` and pair with a room whose `ROOM_TABLE_CAPACITY` matches (see
+ * `PlayerRoom.createGame`).
  */
 export interface RoomGameEngine {
   readonly kind: GameKind
   readonly minPlayers: number
   readonly maxPlayers: number
-  create(
-    roomId: string,
-    gameSessionId: string,
-    players: readonly [PlayerId, PlayerId]
-  ): AnyGameState
+  create(roomId: string, gameSessionId: string, players: readonly PlayerId[]): AnyGameState
   applyMove(state: AnyGameState, playerId: PlayerId, move: GameMove): SessionMoveResult
-  startNewRound(state: AnyGameState, players: readonly [PlayerId, PlayerId]): void
+  startNewRound(state: AnyGameState, players: readonly PlayerId[]): void
   surrender(state: AnyGameState, playerId: PlayerId): PlayerId
 }
 

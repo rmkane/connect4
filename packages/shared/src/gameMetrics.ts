@@ -1,5 +1,6 @@
 import type { PlayerId } from '@/core.js'
 import type { GameKind } from '@/room.js'
+import type { TableSeatIndex } from '@/tableSeat.js'
 
 /** How the session stopped (aligned with game `result.reason` where applicable). */
 export type GameMetricsEndReason =
@@ -41,10 +42,10 @@ export interface GameMetricsSummary {
     winnerId: PlayerId | null
     reason: GameMetricsEndReason
   }
-  /** Physical seats when still known (`null` if that player already left mid-summary). */
+  /** Table slot for each roster entry when still known (`null` if that player already left mid-summary). */
   players: readonly [
-    { id: PlayerId; displayName: string; seat: 'red' | 'yellow' | null },
-    { id: PlayerId; displayName: string; seat: 'red' | 'yellow' | null },
+    { id: PlayerId; displayName: string; seatIndex: TableSeatIndex | null },
+    { id: PlayerId; displayName: string; seatIndex: TableSeatIndex | null },
   ]
   /** In-game roster order `[first mover, second]` (same as `state.players`). */
   roster: readonly [PlayerId, PlayerId]

@@ -11,7 +11,7 @@ export interface TicTacToeState {
   game: 'tic_tac_toe'
   roomId: string
   gameSessionId: string
-  /** `[X, O]` for this game — order is randomized when the game starts / rematches; O always opens. */
+  /** Roster `[marks X, marks O]` — order is randomized vs table seats when the game starts / rematches; O always opens. */
   players: readonly [PlayerId, PlayerId]
   board: TicTacToeCell[][]
   currentTurn: PlayerId

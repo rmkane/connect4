@@ -9,7 +9,7 @@ export interface Connect4State {
   game: 'connect4'
   roomId: string
   gameSessionId: string
-  /** `[red discs, yellow discs]` for this game — order is randomized when the game starts / rematches. */
+  /** Roster `[slot 0, slot 1]` — order is randomized vs table seats when the game starts / rematches. */
   players: readonly [PlayerId, PlayerId]
   board: (PlayerId | null)[][]
   currentTurn: PlayerId

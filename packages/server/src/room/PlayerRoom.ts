@@ -6,7 +6,6 @@ import { WebSocket } from 'ws'
 import type {
   AnyGameState,
   ChatMessagePayload,
-  Color,
   GameKind,
   GameListing,
   GameMetricsEndReason,
@@ -15,14 +14,21 @@ import type {
   GamePlayerMetricRow,
   PlayerId,
   PlayerInfo,
+  RoomSeatsTuple,
   RoomSnapshot,
   ServerMessage,
+  TableSeatIndex,
 } from '@gameroom/shared'
 import {
   CHAT_HISTORY_LIMIT,
+  ROOM_TABLE_CAPACITY,
   SYSTEM_ANNOUNCEMENT_PLAYER_ID,
+  TABLE_SEAT_INDICES,
+  firstOpenSeatIndex,
   sanitizeChatText,
   sanitizeRoomTitle,
+  seatedPlayerCount,
+  tableSeatIndexForPlayer,
 } from '@gameroom/shared'
 
 import { getEngine, getEngineForActiveState } from '@/game/gameEngines.js'
@@ -41,14 +47,12 @@ export class PlayerRoom {
   roomTitle = ''
   /** First joiner is host; reassigned when the host leaves or passes host. */
   leaderId: PlayerId | null = null
-  seats: { red: PlayerInfo | null; yellow: PlayerInfo | null } = {
-    red: null,
-    yellow: null,
-  }
+  /** Table slots in join order (`0` = first to sit). Mutable tuple length `ROOM_TABLE_CAPACITY`. */
+  seats: [PlayerInfo | null, PlayerInfo | null] = [null, null]
   private matchPoints = new Map<PlayerId, number>()
   games: GameListing[] = []
   activeGame: AnyGameState | null = null
-  sockets: Map<Color, WebSocket> = new Map()
+  sockets: Map<TableSeatIndex, WebSocket> = new Map()
   private chatHistory: ChatMessagePayload[] = []
   private gameMetrics: ActiveGameMetrics | null = null
   private readonly log: Logger
@@ -59,9 +63,10 @@ export class PlayerRoom {
 
   private snapshotScores(): Record<PlayerId, number> {
     const out: Record<PlayerId, number> = {}
-    if (this.seats.red) out[this.seats.red.id] = this.matchPoints.get(this.seats.red.id) ?? 0
-    if (this.seats.yellow)
-      out[this.seats.yellow.id] = this.matchPoints.get(this.seats.yellow.id) ?? 0
+    for (const idx of TABLE_SEAT_INDICES) {
+      const p = this.seats[idx]
+      if (p) out[p.id] = this.matchPoints.get(p.id) ?? 0
+    }
     return out
   }
 
@@ -70,7 +75,7 @@ export class PlayerRoom {
       roomId: this.roomId,
       roomTitle: this.roomTitle,
       leaderId: this.leaderId,
-      seats: { red: this.seats.red, yellow: this.seats.yellow },
+      seats: [this.seats[0], this.seats[1]],
       matchScores: this.snapshotScores(),
       games: this.games.map((g) => ({ ...g })),
       activeGame: this.activeGame
@@ -174,8 +179,16 @@ export class PlayerRoom {
       gameDurationMs,
       outcome,
       players: [
-        { id: p0, displayName: this.displayNameFor(p0), seat: this.seatColorFor(p0) },
-        { id: p1, displayName: this.displayNameFor(p1), seat: this.seatColorFor(p1) },
+        {
+          id: p0,
+          displayName: this.displayNameFor(p0),
+          seatIndex: tableSeatIndexForPlayer(this.seats as RoomSeatsTuple, p0),
+        },
+        {
+          id: p1,
+          displayName: this.displayNameFor(p1),
+          seatIndex: tableSeatIndexForPlayer(this.seats as RoomSeatsTuple, p1),
+        },
       ],
       roster,
       turns: m.turns.map((t) => ({ ...t })),
@@ -221,15 +234,9 @@ export class PlayerRoom {
   }
 
   private displayNameFor(playerId: PlayerId): string {
-    if (this.seats.red?.id === playerId) return this.seats.red.displayName
-    if (this.seats.yellow?.id === playerId) return this.seats.yellow.displayName
-    return 'Player'
-  }
-
-  private seatColorFor(playerId: PlayerId): 'red' | 'yellow' | null {
-    if (this.seats.red?.id === playerId) return 'red'
-    if (this.seats.yellow?.id === playerId) return 'yellow'
-    return null
+    const idx = tableSeatIndexForPlayer(this.seats as RoomSeatsTuple, playerId)
+    if (idx === null) return 'Player'
+    return this.seats[idx]!.displayName
   }
 
   private gameLabel(game: AnyGameState['game']): string {
@@ -304,12 +311,8 @@ export class PlayerRoom {
     const clean = sanitizeChatText(text)
     if (!clean) return false
 
-    const info =
-      this.seats.red?.id === playerId
-        ? this.seats.red
-        : this.seats.yellow?.id === playerId
-          ? this.seats.yellow
-          : null
+    const idx = tableSeatIndexForPlayer(this.seats as RoomSeatsTuple, playerId)
+    const info = idx !== null ? this.seats[idx] : null
     if (!info) return false
 
     const msg: ChatMessagePayload = {
@@ -339,35 +342,34 @@ export class PlayerRoom {
   }
 
   private isSeatedPlayer(playerId: PlayerId): boolean {
-    return this.seats.red?.id === playerId || this.seats.yellow?.id === playerId
+    return tableSeatIndexForPlayer(this.seats as RoomSeatsTuple, playerId) !== null
   }
 
   private seatedCount(): number {
-    return (this.seats.red ? 1 : 0) + (this.seats.yellow ? 1 : 0)
+    return seatedPlayerCount(this.seats as RoomSeatsTuple)
   }
 
   /** Whether enough seats are filled and those sockets are open for this engine's roster. */
   private allEnginePlayersConnected(engine: { maxPlayers: number }): boolean {
-    const seatedColors = (['red', 'yellow'] as const).filter((c) => this.seats[c])
-    if (seatedColors.length < engine.maxPlayers) return false
-    for (const c of seatedColors.slice(0, engine.maxPlayers)) {
-      const ws = this.sockets.get(c)
+    if (this.seatedCount() < engine.maxPlayers) return false
+    for (const idx of TABLE_SEAT_INDICES) {
+      if (!this.seats[idx]) return false
+      const ws = this.sockets.get(idx)
       if (!ws || ws.readyState !== WebSocket.OPEN) return false
     }
     return true
   }
 
-  /** Random `[A,B]` or `[B,A]` so in-game roles (red/yellow, X/O) are not tied to room join order. */
-  private shuffledPlayers(): readonly [PlayerId, PlayerId] {
-    const a = this.seats.red!.id
-    const b = this.seats.yellow!.id
+  /** Random roster order so game roles are not tied to table join order. */
+  private shuffledRoster(): readonly PlayerId[] {
+    const a = this.seats[0]!.id
+    const b = this.seats[1]!.id
     return Math.random() < 0.5 ? [a, b] : [b, a]
   }
 
-  join(ws: WebSocket, displayName: string): { seat: Color; playerId: PlayerId } | null {
-    const seat: Color | null = !this.seats.red ? 'red' : !this.seats.yellow ? 'yellow' : null
-
-    if (!seat) return null
+  join(ws: WebSocket, displayName: string): { seat: TableSeatIndex; playerId: PlayerId } | null {
+    const seat = firstOpenSeatIndex(this.seats as RoomSeatsTuple)
+    if (seat === null) return null
 
     const playerId = randomUUID() as PlayerId
     this.seats[seat] = { id: playerId, displayName }
@@ -399,13 +401,12 @@ export class PlayerRoom {
     const engine = getEngine(kind)
     const seated = this.seatedCount()
     if (seated < engine.minPlayers || seated > engine.maxPlayers) return false
-    // Table is still two seats; `create` only accepts a pair of ids until seating grows.
-    if (engine.maxPlayers > 2) return false
+    if (engine.maxPlayers > ROOM_TABLE_CAPACITY) return false
 
     const gameSessionId = randomUUID()
     this.games.push({ gameSessionId, kind, status: 'in_progress' })
 
-    const players = this.shuffledPlayers()
+    const players = this.shuffledRoster()
 
     this.activeGame = engine.create(this.roomId, gameSessionId, players)
     this.initGameMetrics(gameSessionId)
@@ -460,7 +461,7 @@ export class PlayerRoom {
     if (this.seatedCount() < engine.maxPlayers) return false
     if (!this.allEnginePlayersConnected(engine)) return false
 
-    const nextPlayers = this.shuffledPlayers()
+    const nextPlayers = this.shuffledRoster()
 
     engine.startNewRound(g, nextPlayers)
     this.initGameMetrics(gameSessionId)
@@ -506,7 +507,7 @@ export class PlayerRoom {
     return true
   }
 
-  disconnect(seat: Color) {
+  disconnect(seat: TableSeatIndex) {
     const leaving = this.seats[seat]
     const leavingId = leaving?.id ?? null
     const prevLeaderId = this.leaderId
@@ -515,7 +516,9 @@ export class PlayerRoom {
     this.seats[seat] = null
     if (leaving) this.matchPoints.delete(leaving.id)
 
-    const remaining = [this.seats.red, this.seats.yellow].filter((p): p is PlayerInfo => Boolean(p))
+    const remaining = TABLE_SEAT_INDICES.map((i) => this.seats[i]).filter((p): p is PlayerInfo =>
+      Boolean(p)
+    )
     if (remaining.length === 0) {
       this.leaderId = null
     } else if (leavingId && leavingId === prevLeaderId) {
@@ -541,7 +544,7 @@ export class PlayerRoom {
       this.activeGame = null
     }
 
-    if (!this.seats.red && !this.seats.yellow) {
+    if (!this.seats[0] && !this.seats[1]) {
       this.matchPoints.clear()
       this.games = []
       this.activeGame = null

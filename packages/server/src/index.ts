@@ -2,7 +2,12 @@ import 'dotenv/config'
 import { createServer } from 'http'
 import { type RawData, WebSocketServer } from 'ws'
 
-import { CHAT_MIN_INTERVAL_MS, ClientMessage, type Color, type PlayerId } from '@gameroom/shared'
+import {
+  CHAT_MIN_INTERVAL_MS,
+  ClientMessage,
+  type PlayerId,
+  type TableSeatIndex,
+} from '@gameroom/shared'
 
 import { GlobalChat } from '@/chat/GlobalChat.js'
 import { serverConfig } from '@/config.js'
@@ -76,7 +81,7 @@ wss.on('connection', (ws) => {
 
   let assignedRoomId: string | null = null
   let assignedPlayerId: PlayerId | null = null
-  let assignedSeat: Color | null = null
+  let assignedSeat: TableSeatIndex | null = null
   let subscribedGlobalChat = false
   let lastChatAtGlobal = 0
   let lastChatAtRoom = 0

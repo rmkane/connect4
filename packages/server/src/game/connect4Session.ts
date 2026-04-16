@@ -11,15 +11,17 @@ function pickOpening(players: readonly [PlayerId, PlayerId]): PlayerId {
 export function createGame(
   roomId: string,
   gameSessionId: string,
-  players: readonly [PlayerId, PlayerId]
+  players: readonly PlayerId[]
 ): Connect4State {
+  if (players.length !== 2) throw new Error('connect4: roster must have exactly 2 players')
+  const pair = players as readonly [PlayerId, PlayerId]
   return {
     game: 'connect4',
     roomId,
     gameSessionId,
-    players,
+    players: pair,
     board: rules.makeBoard(),
-    currentTurn: pickOpening(players),
+    currentTurn: pickOpening(pair),
     status: 'in_progress',
     result: null,
   }
@@ -47,13 +49,12 @@ export function applyMove(
   return { kind: 'ongoing' }
 }
 
-export function startNewRound(
-  state: Connect4State,
-  nextPlayers: readonly [PlayerId, PlayerId]
-): void {
-  state.players = nextPlayers
+export function startNewRound(state: Connect4State, nextPlayers: readonly PlayerId[]): void {
+  if (nextPlayers.length !== 2) throw new Error('connect4: roster must have exactly 2 players')
+  const pair = nextPlayers as readonly [PlayerId, PlayerId]
+  state.players = pair
   state.board = rules.makeBoard()
-  state.currentTurn = pickOpening(nextPlayers)
+  state.currentTurn = pickOpening(pair)
   state.status = 'in_progress'
   state.result = null
 }

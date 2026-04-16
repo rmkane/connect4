@@ -1,5 +1,6 @@
 import type { Connect4State } from '@/connect4.js'
-import type { PlayerId, PlayerInfo } from '@/core.js'
+import type { PlayerId } from '@/core.js'
+import type { RoomSeatsTuple } from '@/tableSeat.js'
 import type { TicTacToeState } from '@/ticTacToe.js'
 
 export type GameKind = 'connect4' | 'tic_tac_toe'
@@ -21,7 +22,8 @@ export interface RoomSnapshot {
    * `null` when the room is empty.
    */
   leaderId: PlayerId | null
-  seats: { red: PlayerInfo | null; yellow: PlayerInfo | null }
+  /** Physical table slots in join order; length = `ROOM_TABLE_CAPACITY` from `@/tableSeat.js`. */
+  seats: RoomSeatsTuple
   /**
    * Wins in this room keyed by `PlayerId` (draws do not increment).
    * Includes an entry for each currently seated player (default 0).
@@ -37,8 +39,8 @@ export interface PublicRoomSummary {
   /** Set when hosts rename the table (lobby display). */
   roomTitle?: string
   status: 'waiting' | 'in_progress'
-  redDisplayName: string | null
-  yellowDisplayName: string | null
+  /** Display names per table seat index (join order); `null` when that slot is empty. */
+  seatDisplayNames: readonly [string | null, string | null]
 }
 
 export interface RoomsListResponse {

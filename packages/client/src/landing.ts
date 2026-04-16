@@ -1,6 +1,7 @@
 import { html, nothing, render } from 'lit'
 
 import type { PublicRoomSummary, RoomsListResponse } from '@gameroom/shared'
+import { ROOM_TABLE_CAPACITY } from '@gameroom/shared'
 
 import { clientConfig } from '@/config.js'
 import { logger } from '@/logger.js'
@@ -13,28 +14,28 @@ function roomMatchesFilter(room: PublicRoomSummary, q: string): boolean {
   if (!q) return true
   const id = room.roomId.toLowerCase()
   const title = (room.roomTitle ?? '').toLowerCase()
-  const r = (room.redDisplayName ?? '').toLowerCase()
-  const y = (room.yellowDisplayName ?? '').toLowerCase()
-  return id.includes(q) || title.includes(q) || r.includes(q) || y.includes(q)
+  const n0 = (room.seatDisplayNames[0] ?? '').toLowerCase()
+  const n1 = (room.seatDisplayNames[1] ?? '').toLowerCase()
+  return id.includes(q) || title.includes(q) || n0.includes(q) || n1.includes(q)
 }
 
 function roomIsJoinable(room: PublicRoomSummary): boolean {
   if (room.status !== 'waiting') return false
-  const n = (room.redDisplayName ? 1 : 0) + (room.yellowDisplayName ? 1 : 0)
-  return n < 2
+  const n = (room.seatDisplayNames[0] ? 1 : 0) + (room.seatDisplayNames[1] ? 1 : 0)
+  return n < ROOM_TABLE_CAPACITY
 }
 
 function waitingSubtitle(room: PublicRoomSummary) {
-  const lone = room.redDisplayName ?? room.yellowDisplayName
+  const lone = room.seatDisplayNames[0] ?? room.seatDisplayNames[1]
   if (lone) return html`Waiting · <span class="font-medium">${lone}</span>`
   return html`Empty table — be the first to sit`
 }
 
 function inProgressSubtitle(room: PublicRoomSummary) {
-  const r = room.redDisplayName ?? 'Red'
-  const y = room.yellowDisplayName ?? 'Yellow'
-  return html`In progress · <span class="font-medium">${r}</span> vs
-    <span class="font-medium">${y}</span>`
+  const a = room.seatDisplayNames[0] ?? 'Seat 1'
+  const b = room.seatDisplayNames[1] ?? 'Seat 2'
+  return html`In progress · <span class="font-medium">${a}</span> vs
+    <span class="font-medium">${b}</span>`
 }
 
 export function mountLanding(opts: { host: HTMLElement; onCreate: () => void }): LandingHandle {

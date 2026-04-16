@@ -1,7 +1,8 @@
 import type { ChatMessagePayload } from '@/chat.js'
-import type { Color, PlayerId } from '@/core.js'
+import type { PlayerId } from '@/core.js'
 import type { GameMetricsSummary } from '@/gameMetrics.js'
 import type { GameKind, RoomSnapshot } from '@/room.js'
+import type { TableSeatIndex } from '@/tableSeat.js'
 
 export type GameMove =
   | { game: 'connect4'; column: number }
@@ -29,7 +30,13 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: 'room_state'; snapshot: RoomSnapshot }
   /** Sent only to the connection that successfully `join_room`d (includes stable `playerId`). */
-  | { type: 'joined_room'; roomId: string; playerId: PlayerId; seat: Color; leaderId: PlayerId }
+  | {
+      type: 'joined_room'
+      roomId: string
+      playerId: PlayerId
+      seat: TableSeatIndex
+      leaderId: PlayerId
+    }
   | { type: 'error'; message: string }
   | ({ type: 'chat_message' } & ChatMessagePayload)
   | {

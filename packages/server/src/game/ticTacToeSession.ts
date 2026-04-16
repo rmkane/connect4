@@ -4,23 +4,25 @@ import type { SessionMoveResult } from '@/game/sessionTypes.js'
 import { otherPlayer } from '@/game/twoPlayer.js'
 import * as rules from '@/games/ticTacToe/rules.js'
 
-/** Second seat in `players` opens (maps to “O” in UI copy). */
-function pickOpening(players: readonly [PlayerId, PlayerId]): PlayerId {
-  return players[1]
+/** Second roster slot opens (marks “O” in UI copy). */
+function pickOpening(players: readonly PlayerId[]): PlayerId {
+  return players[1]!
 }
 
 export function createGame(
   roomId: string,
   gameSessionId: string,
-  players: readonly [PlayerId, PlayerId]
+  players: readonly PlayerId[]
 ): TicTacToeState {
+  if (players.length !== 2) throw new Error('tic_tac_toe: roster must have exactly 2 players')
+  const pair = players as readonly [PlayerId, PlayerId]
   return {
     game: 'tic_tac_toe',
     roomId,
     gameSessionId,
-    players,
+    players: pair,
     board: rules.makeBoard(),
-    currentTurn: pickOpening(players),
+    currentTurn: pickOpening(pair),
     status: 'in_progress',
     result: null,
   }
@@ -50,13 +52,12 @@ export function applyMove(
   return { kind: 'ongoing' }
 }
 
-export function startNewRound(
-  state: TicTacToeState,
-  nextPlayers: readonly [PlayerId, PlayerId]
-): void {
-  state.players = nextPlayers
+export function startNewRound(state: TicTacToeState, nextPlayers: readonly PlayerId[]): void {
+  if (nextPlayers.length !== 2) throw new Error('tic_tac_toe: roster must have exactly 2 players')
+  const pair = nextPlayers as readonly [PlayerId, PlayerId]
+  state.players = pair
   state.board = rules.makeBoard()
-  state.currentTurn = pickOpening(nextPlayers)
+  state.currentTurn = pickOpening(pair)
   state.status = 'in_progress'
   state.result = null
 }

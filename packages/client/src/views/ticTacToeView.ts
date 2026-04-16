@@ -1,6 +1,7 @@
 import { type TemplateResult, html, nothing, render } from 'lit'
 
 import type { PlayerId, RoomSnapshot, TicTacToeState } from '@gameroom/shared'
+import { roomTableIsFull } from '@gameroom/shared'
 
 import { confirmModal, infoModal, modalOpenButton, openModalById } from '@/views/appModal.js'
 import { displayNameFor, markForPlayer, matchScoreFor } from '@/views/playerLabels.js'
@@ -90,10 +91,6 @@ function canPlay(
   return state.board[row][col] === null
 }
 
-function snapshotSeatsFilled(snapshot: RoomSnapshot): boolean {
-  return Boolean(snapshot.seats.red && snapshot.seats.yellow)
-}
-
 function youBannerLine(
   snapshot: RoomSnapshot,
   state: TicTacToeState,
@@ -159,12 +156,9 @@ function boardTemplate(
   recap: { show: boolean; onOpen: () => void } | null
 ): TemplateResult {
   const showCompletedActions =
-    state.status === 'completed' &&
-    myPlayerId !== null &&
-    snapshotSeatsFilled(snapshot) &&
-    Boolean(snapshot.seats.red && snapshot.seats.yellow)
+    state.status === 'completed' && myPlayerId !== null && roomTableIsFull(snapshot.seats)
   const showRecapButton =
-    state.status === 'completed' && recap !== null && recap.show && snapshotSeatsFilled(snapshot)
+    state.status === 'completed' && recap !== null && recap.show && roomTableIsFull(snapshot.seats)
   const showSurrender = state.status === 'in_progress' && myPlayerId !== null
   const [xId, oId] = state.players
 
