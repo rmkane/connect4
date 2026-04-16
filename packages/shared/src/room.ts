@@ -1,31 +1,15 @@
-import type { Connect4State } from '@/connect4.js'
 import type { PlayerId } from '@/core.js'
-import type { RockPaperScissorsState } from '@/rockPaperScissors.js'
+import type { AnyGameState, GameKind } from '@/games/registry.js'
 import type { RoomSeatsTuple } from '@/tableSeat.js'
-import type { TicTacToeState } from '@/ticTacToe.js'
 
-export type GameKind = 'connect4' | 'tic_tac_toe' | 'rock_paper_scissors'
-
-/** Single source for picker order and server registration checks. Add new kinds here first. */
-export const TABLE_GAME_KINDS: readonly GameKind[] = [
-  'connect4',
-  'tic_tac_toe',
-  'rock_paper_scissors',
-] as const
-
-export const GAME_KIND_LABELS: Record<GameKind, string> = {
-  connect4: 'Connect 4',
-  tic_tac_toe: 'Tic-tac-toe',
-  rock_paper_scissors: 'Rock paper scissors',
-}
+export type { AnyGameState, GameKind } from '@/games/registry.js'
+export { GAME_KIND_LABELS, TABLE_GAME_KINDS } from '@/games/registry.js'
 
 export interface GameListing {
   gameSessionId: string
   kind: GameKind
   status: 'in_progress' | 'completed' | 'abandoned'
 }
-
-export type AnyGameState = Connect4State | TicTacToeState | RockPaperScissorsState
 
 /** Waiting for the other seated player to accept a rematch for this session. */
 export interface PendingRematch {

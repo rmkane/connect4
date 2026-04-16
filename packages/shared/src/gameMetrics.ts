@@ -1,5 +1,5 @@
 import type { PlayerId } from '@/core.js'
-import type { GameKind } from '@/room.js'
+import type { GameKind } from '@/games/registry.js'
 import type { TableSeatIndex } from '@/tableSeat.js'
 
 /** How the session stopped (aligned with game `result.reason` where applicable). */

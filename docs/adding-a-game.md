@@ -8,12 +8,13 @@ The repo is a pnpm workspace: **`@gameroom/shared`** (types + wire contracts), *
 
 | Step | File | What to do |
 | ---- | ---- | ---------- |
-| 1a | New module, e.g. `src/myGame.ts` | Define the **state** type with a discriminant `game: 'my_game'`, `roomId`, `gameSessionId`, `players` as `readonly [PlayerId, PlayerId]` (or a larger tuple if you extend table capacity later), `status`, `result`, and any game-specific fields. Mirror `connect4.ts`, `ticTacToe.ts`, or `rockPaperScissors.ts`. |
-| 1b | `src/room.ts` | Add your slug to **`GameKind`**, extend **`TABLE_GAME_KINDS`**, **`GAME_KIND_LABELS`**, import the new state type, and extend **`AnyGameState`**. |
-| 1c | `src/messages.ts` | Extend **`GameMove`** with a variant tagged `game: 'my_game'` and the payload your client will send (`game_move`). |
-| 1d | `src/gameMetrics.ts` | If the game can end in a way not already listed, add a **`GameMetricsEndReason`** variant and map it in **`outcomeDetailPhrase`**. |
-| 1e | `src/index.ts` | `export * from '@/myGame.js'` (path alias matches `tsconfig`). |
-| Optional | Same module | If some fields must **never** be sent to certain clients, add a **`wire*ForViewer`** helper (see `wireRockPaperScissorsForViewer` in `rockPaperScissors.ts`) and call it from that game’s **`RoomGameEngine.wireActiveSnapshot`** in `gameEngines.ts`. |
+| 1a | New module, e.g. `src/myGame.ts` | Define the **state** type with a discriminant `game: 'my_game'`, `roomId`, `gameSessionId`, `players`, `status`, `result`, etc. Export from **`index.ts`** like the other state modules. |
+| 1b | **`src/games/registry.ts`** | Add a row to **`TABLE_GAME_DEFINITIONS`**, extend **`AnyGameState`** with your state type import. **`GameKind`**, **`TABLE_GAME_KINDS`**, and **`GAME_KIND_LABELS`** are derived—do not edit them by hand. |
+| 1c | **`src/games/moves.ts`** | Add the **`GameMove`** variant for your slug. |
+| 1d | `src/gameMetrics.ts` | If the game can end in a new way, extend **`GameMetricsEndReason`** and **`outcomeDetailPhrase`**. |
+| Optional | State module | Hidden per-viewer fields: **`wire*ForViewer`** + **`RoomGameEngine.wireActiveSnapshot`** (see rock–paper–scissors). |
+
+`src/room.ts` only re-exports game types from the registry—you should not need to edit it for a new title.
 
 ## 2. Server package (`packages/server`)
 
@@ -39,10 +40,10 @@ Reuse **`connect4RosterSlot`** in `playerLabels.ts` whenever you need roster ind
 ## 4. Checklist (today’s repo — copy when starting a title)
 
 - [ ] `packages/shared/src/<game>.ts` — state + result types (+ optional `wire*ForViewer` for hidden fields)
-- [ ] `packages/shared/src/room.ts` — `GameKind`, **`TABLE_GAME_KINDS`**, **`GAME_KIND_LABELS`**, `AnyGameState`
-- [ ] `packages/shared/src/messages.ts` — `GameMove`
+- [ ] **`packages/shared/src/games/registry.ts`** — `TABLE_GAME_DEFINITIONS` + **`AnyGameState`**
+- [ ] **`packages/shared/src/games/moves.ts`** — `GameMove` variant
 - [ ] `packages/shared/src/gameMetrics.ts` — `GameMetricsEndReason` (if needed) + **`outcomeDetailPhrase`**
-- [ ] `packages/shared/src/index.ts` — export
+- [ ] `packages/shared/src/index.ts` — export new state module
 - [ ] `packages/server/src/game/<game>Session.ts` — create / apply / startNewRound
 - [ ] `packages/server/src/game/gameEngines.ts` — full **`RoomGameEngine`** + append to **`REGISTERED_TABLE_GAME_ENGINES`**
 - [ ] `packages/server/src/game/surrender.ts` — if surrenderable

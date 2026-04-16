@@ -1,13 +1,12 @@
 import type { ChatMessagePayload } from '@/chat.js'
 import type { PlayerId } from '@/core.js'
 import type { GameMetricsSummary } from '@/gameMetrics.js'
-import type { GameKind, RoomSnapshot } from '@/room.js'
+import type { GameMove } from '@/games/moves.js'
+import type { GameKind } from '@/games/registry.js'
+import type { RoomSnapshot } from '@/room.js'
 import type { TableSeatIndex } from '@/tableSeat.js'
 
-export type GameMove =
-  | { game: 'connect4'; column: number }
-  | { game: 'tic_tac_toe'; row: number; col: number }
-  | { game: 'rock_paper_scissors'; throw: 'rock' | 'paper' | 'scissors' }
+export type { GameMove } from '@/games/moves.js'
 
 // Messages client → server
 export type ClientMessage =
