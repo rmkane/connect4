@@ -2,6 +2,10 @@ import type { PlayerId } from '@/core.js'
 
 export const CHAT_MAX_TEXT_LENGTH = 400
 export const ROOM_TITLE_MAX_LENGTH = 64
+/**
+ * Max messages retained in memory for room and global chat (server history + client buffers).
+ * Older lines are dropped; new joins only receive the tail.
+ */
 export const CHAT_HISTORY_LIMIT = 50
 /** Min milliseconds between chat sends per connection (abuse guard). */
 export const CHAT_MIN_INTERVAL_MS = 450

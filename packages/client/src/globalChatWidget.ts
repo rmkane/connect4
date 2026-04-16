@@ -2,10 +2,13 @@ import { type TemplateResult, html, nothing, render } from 'lit'
 import { live } from 'lit/directives/live.js'
 
 import type { ChatMessagePayload, ClientMessage, ServerMessage } from '@gameroom/shared'
-import { CHAT_MAX_TEXT_LENGTH } from '@gameroom/shared'
+import { CHAT_HISTORY_LIMIT, CHAT_MAX_TEXT_LENGTH } from '@gameroom/shared'
 
+import { chatLogWasFollowingTail, scrollChatLogToBottomById } from '@/chatScroll.js'
 import { clientConfig } from '@/config.js'
 import { logger } from '@/logger.js'
+
+const GLOBAL_CHAT_LOG_ID = 'gameroom-global-chat-log'
 
 const LS_NAME = 'gameroom_global_chat_display_name'
 /** Previous app id; still read so display names survive the rename. */
@@ -57,20 +60,18 @@ export function mountGlobalChatWidget(
         return
       }
       if (msg.type === 'chat_history' && msg.scope === 'global') {
-        messages = msg.messages.slice(-50)
-        paint()
+        messages = msg.messages.slice(-CHAT_HISTORY_LIMIT)
+        paint({ forceScroll: true })
       }
       if (msg.type === 'chat_message' && msg.scope === 'global') {
-        messages = [
-          ...messages.slice(-49),
-          {
-            scope: 'global',
-            senderId: msg.senderId,
-            displayName: msg.displayName,
-            text: msg.text,
-            sentAt: msg.sentAt,
-          },
-        ]
+        const next: ChatMessagePayload = {
+          scope: 'global',
+          senderId: msg.senderId,
+          displayName: msg.displayName,
+          text: msg.text,
+          sentAt: msg.sentAt,
+        }
+        messages = [...messages, next].slice(-CHAT_HISTORY_LIMIT)
         paint()
       }
       if (msg.type === 'error') {
@@ -101,40 +102,31 @@ export function mountGlobalChatWidget(
     if (!t || !ws || ws.readyState !== WebSocket.OPEN) return
     send({ type: 'chat_send', scope: 'global', text: t })
     draft = ''
-    paint()
+    paint({ forceScroll: true })
   }
 
   const sectionClass =
     variant === 'tabPanel'
-      ? 'flex min-h-0 flex-1 flex-col text-left'
+      ? 'grid h-full min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] gap-2 text-left'
       : variant === 'sidebar'
-        ? 'flex min-h-0 flex-1 flex-col rounded-xl border border-zinc-200 bg-white p-4 text-left shadow-sm sm:p-5'
-        : 'w-full rounded-xl border border-zinc-200 bg-white p-4 text-left shadow-sm sm:p-5'
+        ? 'grid h-full min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] gap-2 rounded-xl border border-zinc-200 bg-white p-4 text-left shadow-sm sm:gap-3 sm:p-5'
+        : 'grid h-full min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] gap-2 rounded-xl border border-zinc-200 bg-white p-4 text-left shadow-sm sm:p-5'
 
   const logClass =
-    variant === 'tabPanel'
-      ? 'mt-2 min-h-0 flex-1 overflow-y-auto rounded-lg border border-zinc-100 bg-zinc-50 p-2 text-sm'
-      : 'mt-3 max-h-40 overflow-y-auto rounded-lg border border-zinc-100 bg-zinc-50 p-2 text-sm'
+    'min-h-0 min-w-0 overflow-x-hidden overflow-y-auto break-words rounded-lg border border-zinc-100 bg-zinc-50 p-2 text-sm'
 
   function shell(): TemplateResult {
-    return html`
-      <section class=${sectionClass} aria-label="Global chat">
+    const chrome = html`
+      <div class="min-w-0 space-y-2">
         ${variant === 'tabPanel'
-          ? nothing
+          ? html`<p class="text-xs text-zinc-500">Everyone on this server.</p>`
           : html`
               <h2 class="text-sm font-semibold text-zinc-900">Global chat</h2>
-              <p class="mt-1 text-xs text-zinc-500">
+              <p class="text-xs text-zinc-500">
                 Same server as games — no account. Be nice; messages are ephemeral.
               </p>
             `}
-        ${variant === 'tabPanel'
-          ? html`<p class="text-xs text-zinc-500">Everyone on this server.</p>`
-          : nothing}
-        <label
-          class="${variant === 'tabPanel'
-            ? 'mt-2'
-            : 'mt-3'} block text-xs font-medium text-zinc-600"
-          for="global-chat-name"
+        <label class="block text-xs font-medium text-zinc-600" for="global-chat-name"
           >Show as</label
         >
         <input
@@ -142,11 +134,17 @@ export function mountGlobalChatWidget(
           type="text"
           maxlength="64"
           autocomplete="nickname"
-          class="mt-1 w-full rounded-lg border border-zinc-300 px-2 py-1.5 text-sm text-zinc-900"
+          class="w-full rounded-lg border border-zinc-300 px-2 py-1.5 text-sm text-zinc-900"
           .value=${displayName}
           @change=${(e: Event) => saveName((e.target as HTMLInputElement).value)}
         />
-        <div class=${logClass} role="log" aria-live="polite">
+      </div>
+    `
+
+    return html`
+      <section class=${sectionClass} aria-label="Global chat">
+        ${chrome}
+        <div id=${GLOBAL_CHAT_LOG_ID} class=${logClass} role="log" aria-live="polite">
           ${messages.length === 0
             ? html`<p class="px-1 py-2 text-xs text-zinc-500">No messages yet.</p>`
             : messages.map(
@@ -159,7 +157,10 @@ export function mountGlobalChatWidget(
                 `
               )}
         </div>
-        <div class="mt-2 flex gap-2">
+        <div
+          class="flex min-w-0 gap-2 border-t border-zinc-200/80 pt-2"
+          aria-label="Send a global message"
+        >
           <input
             type="text"
             maxlength=${CHAT_MAX_TEXT_LENGTH}
@@ -188,8 +189,12 @@ export function mountGlobalChatWidget(
     `
   }
 
-  function paint() {
+  function paint(opts?: { forceScroll?: boolean }) {
+    const logBefore = document.getElementById(GLOBAL_CHAT_LOG_ID)
+    const stickToBottom =
+      opts?.forceScroll === true || chatLogWasFollowingTail(logBefore as HTMLElement | null)
     render(shell(), host)
+    if (stickToBottom) scrollChatLogToBottomById(GLOBAL_CHAT_LOG_ID)
   }
 
   paint()

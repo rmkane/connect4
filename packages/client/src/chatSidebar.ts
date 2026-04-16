@@ -23,21 +23,25 @@ export function mountChatSidebar(opts: {
 
   if (mode === 'home') {
     aside.classList.add(
-      'flex',
-      'flex-col',
+      'min-h-0',
+      'max-h-[min(42dvh,22rem)]',
+      'shrink-0',
+      'overflow-hidden',
       'gap-3',
       'p-4',
+      'lg:h-full',
+      'lg:max-h-full',
+      'lg:min-h-0',
+      'lg:overflow-hidden',
       'lg:sticky',
       'lg:top-6',
-      'lg:max-h-[calc(100vh-5.5rem)]',
-      'lg:self-start',
-      'lg:overflow-y-auto'
+      'lg:self-start'
     )
     const heading = document.createElement('h2')
     heading.className = 'shrink-0 text-xs font-semibold tracking-wide text-zinc-500 uppercase'
     heading.textContent = 'Chat'
     const globalHost = document.createElement('div')
-    globalHost.className = 'flex min-h-[12rem] flex-1 flex-col lg:min-h-0'
+    globalHost.className = 'flex h-full min-h-0 flex-1 flex-col overflow-hidden'
     aside.append(heading, globalHost)
     const global = mountGlobalChatWidget(globalHost, { variant: 'sidebar' })
 
@@ -51,11 +55,13 @@ export function mountChatSidebar(opts: {
   }
 
   aside.classList.add(
-    'flex',
-    'min-h-[min(42vh,20rem)]',
-    'flex-col',
+    'min-h-0',
+    'max-h-[min(42dvh,22rem)]',
+    'shrink-0',
+    'overflow-hidden',
+    'lg:h-full',
+    'lg:max-h-full',
     'lg:min-h-0',
-    'lg:max-h-[calc(100vh-5.5rem)]',
     'lg:overflow-hidden',
     'lg:sticky',
     'lg:top-6',
@@ -80,16 +86,16 @@ export function mountChatSidebar(opts: {
   tabRow.append(btnRoom, btnGlobal)
 
   const panels = document.createElement('div')
-  panels.className = 'flex min-h-0 flex-1 flex-col overflow-hidden bg-zinc-50/80'
+  panels.className = 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-zinc-50/80'
 
   const roomPanel = document.createElement('div')
-  roomPanel.className = 'flex min-h-0 flex-1 flex-col overflow-y-auto p-3'
+  roomPanel.className = 'flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3'
   roomPanel.setAttribute('role', 'tabpanel')
   roomPanel.setAttribute('aria-label', 'Room chat')
 
   const globalPanel = document.createElement('div')
   globalPanel.className =
-    'hidden min-h-0 flex-1 flex-col overflow-y-auto p-3 [scrollbar-gutter:stable]'
+    'flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3 [scrollbar-gutter:stable]'
   globalPanel.setAttribute('role', 'tabpanel')
   globalPanel.setAttribute('aria-label', 'Global chat')
 
@@ -110,8 +116,13 @@ export function mountChatSidebar(opts: {
     btnGlobal.className = tabButtonClasses(!roomOn)
     btnRoom.setAttribute('aria-selected', roomOn ? 'true' : 'false')
     btnGlobal.setAttribute('aria-selected', roomOn ? 'false' : 'true')
-    roomPanel.classList.toggle('hidden', !roomOn)
-    globalPanel.classList.toggle('hidden', roomOn)
+    if (roomOn) {
+      roomPanel.removeAttribute('hidden')
+      globalPanel.setAttribute('hidden', '')
+    } else {
+      roomPanel.setAttribute('hidden', '')
+      globalPanel.removeAttribute('hidden')
+    }
     if (!roomOn) mountGlobalIfNeeded()
   }
 

@@ -9,14 +9,21 @@ import type {
   RoomSnapshot,
   ServerMessage,
 } from '@gameroom/shared'
-import { CHAT_MAX_TEXT_LENGTH, SYSTEM_ANNOUNCEMENT_PLAYER_ID } from '@gameroom/shared'
+import {
+  CHAT_HISTORY_LIMIT,
+  CHAT_MAX_TEXT_LENGTH,
+  SYSTEM_ANNOUNCEMENT_PLAYER_ID,
+} from '@gameroom/shared'
 
+import { chatLogWasFollowingTail, scrollChatLogToBottomById } from '@/chatScroll.js'
 import { clientConfig } from '@/config.js'
 import { logger } from '@/logger.js'
 import { navigateHome } from '@/router.js'
 import { clearSessionContext, paintRoomSessionChrome } from '@/sessionContext.js'
 import { renderConnect4View } from '@/views/connect4View.js'
 import { renderTicTacToeView } from '@/views/ticTacToeView.js'
+
+const ROOM_CHAT_LOG_ID = 'gameroom-room-chat-log'
 
 export type GameSessionHandle = { destroy: () => void }
 
@@ -86,14 +93,24 @@ export function mountGameSession(opts: {
     )
   }
 
-  function paintRoomChat() {
+  function paintRoomChat(opts?: { forceScroll?: boolean }) {
     if (phase !== 'play') return
+    const logBefore = document.getElementById(ROOM_CHAT_LOG_ID)
+    const stickToBottom =
+      opts?.forceScroll === true || chatLogWasFollowingTail(logBefore as HTMLElement | null)
+
     render(
       html`
-        <section class="text-left" aria-label="Room chat">
-          <p class="text-xs text-zinc-500">Only people seated in this room see these messages.</p>
+        <section
+          class="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] gap-2 text-left"
+          aria-label="Room chat"
+        >
+          <p class="min-w-0 text-xs text-zinc-500">
+            Only people seated in this room see these messages.
+          </p>
           <div
-            class="mt-3 max-h-36 overflow-y-auto rounded-lg border border-zinc-100 bg-zinc-50 p-2 text-sm"
+            id=${ROOM_CHAT_LOG_ID}
+            class="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto rounded-lg border border-zinc-100 bg-zinc-50 p-2 text-sm wrap-break-word"
             role="log"
             aria-live="polite"
           >
@@ -128,7 +145,10 @@ export function mountGameSession(opts: {
                       `
                 )}
           </div>
-          <div class="mt-2 flex gap-2">
+          <div
+            class="flex min-w-0 gap-2 border-t border-zinc-200/80 pt-2"
+            aria-label="Send a room message"
+          >
             <input
               type="text"
               maxlength=${CHAT_MAX_TEXT_LENGTH}
@@ -157,6 +177,7 @@ export function mountGameSession(opts: {
       `,
       roomChatMount
     )
+    if (stickToBottom) scrollChatLogToBottomById(ROOM_CHAT_LOG_ID)
   }
 
   function sendRoomChat() {
@@ -164,7 +185,7 @@ export function mountGameSession(opts: {
     if (!t || !myPlayerId) return
     send({ type: 'chat_send', scope: 'room', roomId, text: t })
     roomChatDraft = ''
-    paintRoomChat()
+    paintRoomChat({ forceScroll: true })
   }
 
   function paintBoardArea() {
@@ -395,26 +416,23 @@ export function mountGameSession(opts: {
         leaderIdHint = msg.snapshot.leaderId
         titleDraft = msg.snapshot.roomTitle
         if (phase === 'play') paintBoardArea()
-        if (phase === 'play') paintRoomChat()
         if (phase === 'play') paintSessionChrome()
       }
       if (msg.type === 'chat_history' && msg.scope === 'room' && msg.roomId === roomId) {
-        roomChatMessages = msg.messages.slice(-100)
-        if (phase === 'play') paintRoomChat()
+        roomChatMessages = msg.messages.slice(-CHAT_HISTORY_LIMIT)
+        if (phase === 'play') paintRoomChat({ forceScroll: true })
       }
       if (msg.type === 'chat_message' && msg.scope === 'room' && msg.roomId === roomId) {
-        roomChatMessages = [
-          ...roomChatMessages.slice(-99),
-          {
-            scope: 'room',
-            roomId: msg.roomId,
-            senderId: msg.senderId,
-            displayName: msg.displayName,
-            text: msg.text,
-            sentAt: msg.sentAt,
-            ...(msg.system === true ? { system: true as const } : {}),
-          },
-        ]
+        const next: ChatMessagePayload = {
+          scope: 'room',
+          roomId: msg.roomId,
+          senderId: msg.senderId,
+          displayName: msg.displayName,
+          text: msg.text,
+          sentAt: msg.sentAt,
+          ...(msg.system === true ? { system: true as const } : {}),
+        }
+        roomChatMessages = [...roomChatMessages, next].slice(-CHAT_HISTORY_LIMIT)
         if (phase === 'play') paintRoomChat()
       }
       if (msg.type === 'error') {

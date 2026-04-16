@@ -36,16 +36,16 @@ function renderRoute() {
 
   const row = document.createElement('div')
   row.className =
-    'mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-0 lg:flex-row lg:items-stretch'
+    'mx-auto flex h-full min-h-0 w-full max-w-6xl flex-1 flex-col gap-0 overflow-hidden lg:flex-row lg:items-stretch'
 
   const mainHost = document.createElement('div')
   mainHost.className =
-    'flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-y-auto break-words'
+    'flex h-full min-h-0 min-w-0 flex-1 flex-col items-center overflow-y-auto break-words'
 
   const aside = document.createElement('aside')
   aside.setAttribute('aria-label', 'Chat')
   aside.className =
-    'flex w-full shrink-0 flex-col border-t border-zinc-200 bg-zinc-50/95 lg:w-80 lg:border-t-0 lg:border-l lg:border-zinc-200'
+    'flex min-h-0 w-full shrink-0 flex-col border-t border-zinc-200 bg-zinc-50/95 lg:w-80 lg:border-t-0 lg:border-l lg:border-zinc-200'
 
   row.append(mainHost, aside)
   app.append(row)
