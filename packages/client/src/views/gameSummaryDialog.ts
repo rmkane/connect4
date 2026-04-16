@@ -33,9 +33,11 @@ function outcomeDescription(s: GameMetricsSummary): string {
         ? 'four in a row'
         : r === 'three_in_a_row'
           ? 'three in a row'
-          : r === 'forfeit'
-            ? 'forfeit'
-            : r
+          : r === 'match_wins'
+            ? 'match wins'
+            : r === 'forfeit'
+              ? 'forfeit'
+              : r
     return `${name(outcome.winnerId)} wins (${detail}).`
   }
   return 'Game completed.'
@@ -69,7 +71,11 @@ export function gameSummaryDialog(
       <dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         <dt class="text-zinc-500">Game</dt>
         <dd class="font-medium text-zinc-900">
-          ${summary.gameKind === 'connect4' ? 'Connect 4' : 'Tic-tac-toe'}
+          ${summary.gameKind === 'connect4'
+            ? 'Connect 4'
+            : summary.gameKind === 'tic_tac_toe'
+              ? 'Tic-tac-toe'
+              : 'Rock paper scissors'}
         </dd>
         <dt class="text-zinc-500">Total time</dt>
         <dd class="font-medium text-zinc-900">${formatDurationMs(summary.gameDurationMs)}</dd>

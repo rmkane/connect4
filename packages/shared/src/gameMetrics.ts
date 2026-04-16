@@ -10,6 +10,7 @@ export type GameMetricsEndReason =
   | 'surrender'
   | 'forfeit'
   | 'abandoned'
+  | 'match_wins'
 
 export interface GameTurnMetric {
   playerId: PlayerId

@@ -30,6 +30,7 @@ import {
   sanitizeRoomTitle,
   seatedPlayerCount,
   tableSeatIndexForPlayer,
+  wireRockPaperScissorsForViewer,
 } from '@gameroom/shared'
 
 import { getEngine, getEngineForActiveState } from '@/game/gameEngines.js'
@@ -72,7 +73,18 @@ export class PlayerRoom {
     return out
   }
 
-  getSnapshot(): RoomSnapshot {
+  /**
+   * @param forPlayerId When set, rock-paper-scissors `activeGame` hides the opponent’s in-flight
+   * throw until both players have committed (per-connection `room_state`).
+   */
+  getSnapshot(forPlayerId?: PlayerId): RoomSnapshot {
+    const activeGame = this.activeGame
+      ? (JSON.parse(JSON.stringify(this.activeGame)) as AnyGameState)
+      : null
+    const activeOut =
+      activeGame && activeGame.game === 'rock_paper_scissors'
+        ? wireRockPaperScissorsForViewer(activeGame, forPlayerId)
+        : activeGame
     return {
       roomId: this.roomId,
       roomTitle: this.roomTitle,
@@ -80,19 +92,23 @@ export class PlayerRoom {
       seats: [this.seats[0], this.seats[1]],
       matchScores: this.snapshotScores(),
       games: this.games.map((g) => ({ ...g })),
-      activeGame: this.activeGame
-        ? (JSON.parse(JSON.stringify(this.activeGame)) as AnyGameState)
-        : null,
+      activeGame: activeOut,
       pendingRematch: this.pendingRematch ? { ...this.pendingRematch } : null,
     }
   }
 
   private broadcast() {
-    const payload = JSON.stringify({ type: 'room_state', snapshot: this.getSnapshot() } satisfies {
-      type: 'room_state'
-      snapshot: RoomSnapshot
-    })
-    this.sockets.forEach((ws) => ws.readyState === WebSocket.OPEN && ws.send(payload))
+    for (const seat of TABLE_SEAT_INDICES) {
+      const ws = this.sockets.get(seat)
+      if (!ws || ws.readyState !== WebSocket.OPEN) continue
+      const pid = this.seats[seat]?.id
+      const snapshot = this.getSnapshot(pid)
+      const payload = JSON.stringify({ type: 'room_state', snapshot } satisfies {
+        type: 'room_state'
+        snapshot: RoomSnapshot
+      })
+      ws.send(payload)
+    }
   }
 
   private appendRoomChatHistory(msg: ChatMessagePayload) {
@@ -243,7 +259,9 @@ export class PlayerRoom {
   }
 
   private gameLabel(game: AnyGameState['game']): string {
-    return game === 'connect4' ? 'Connect 4' : 'Tic-tac-toe'
+    if (game === 'connect4') return 'Connect 4'
+    if (game === 'tic_tac_toe') return 'Tic-tac-toe'
+    return 'Rock paper scissors'
   }
 
   private announceGameStarted(): void {
@@ -254,7 +272,9 @@ export class PlayerRoom {
     const text =
       g.game === 'tic_tac_toe'
         ? `${label} started — ${opener} goes first (O).`
-        : `${label} started — ${opener} goes first.`
+        : g.game === 'rock_paper_scissors'
+          ? `${label} started — first to ${g.winsToWinMatch} hand wins takes the match.`
+          : `${label} started — ${opener} goes first.`
     this.pushRoomSystemChat(text)
   }
 
@@ -277,9 +297,11 @@ export class PlayerRoom {
         ? 'four in a row'
         : r.reason === 'three_in_row'
           ? 'three in a row'
-          : r.reason === 'forfeit'
-            ? 'forfeit'
-            : r.reason
+          : r.reason === 'match_wins'
+            ? 'match wins'
+            : r.reason === 'forfeit'
+              ? 'forfeit'
+              : r.reason
     this.pushRoomSystemChat(`${label} ended — ${winnerName} wins (${phrase}).`)
   }
 
@@ -427,9 +449,8 @@ export class PlayerRoom {
     if (g.status !== 'in_progress') return
     if (g.game !== move.game) return
     if (!this.isSeatedPlayer(playerId)) return
-    if (g.currentTurn !== playerId) return
-
     const engine = getEngineForActiveState(g)
+    if (engine.requiresTurnOrder !== false && g.currentTurn !== playerId) return
     const r = engine.applyMove(g, playerId, move)
     if (r.kind === 'invalid') {
       this.log.debug({ game: g.game, playerId, move }, 'move ignored')

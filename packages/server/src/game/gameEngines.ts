@@ -1,6 +1,7 @@
 import type { AnyGameState, GameKind, GameMove, PlayerId } from '@gameroom/shared'
 
 import * as connect4Session from '@/game/connect4Session.js'
+import * as rpsSession from '@/game/rpsSession.js'
 import type { SessionMoveResult } from '@/game/sessionTypes.js'
 import { applySurrender } from '@/game/surrender.js'
 import * as ticTacToeSession from '@/game/ticTacToeSession.js'
@@ -18,6 +19,11 @@ export interface RoomGameEngine {
   readonly kind: GameKind
   readonly minPlayers: number
   readonly maxPlayers: number
+  /**
+   * When false, the room does not require `state.currentTurn === playerId` before applying a move
+   * (e.g. rock-paper-scissors throws in any order each round).
+   */
+  readonly requiresTurnOrder?: boolean
   create(roomId: string, gameSessionId: string, players: readonly PlayerId[]): AnyGameState
   applyMove(state: AnyGameState, playerId: PlayerId, move: GameMove): SessionMoveResult
   startNewRound(state: AnyGameState, players: readonly PlayerId[]): void
@@ -39,6 +45,29 @@ const connect4Engine: RoomGameEngine = {
   },
   surrender: (state, playerId) => {
     if (state.game !== 'connect4') throw new Error('connect4 engine: wrong state')
+    return applySurrender(state, playerId)
+  },
+}
+
+const rockPaperScissorsEngine: RoomGameEngine = {
+  kind: 'rock_paper_scissors',
+  minPlayers: 2,
+  maxPlayers: 2,
+  requiresTurnOrder: false,
+  create: rpsSession.createGame,
+  applyMove: (state, playerId, move) => {
+    if (state.game !== 'rock_paper_scissors' || move.game !== 'rock_paper_scissors') {
+      return { kind: 'invalid' }
+    }
+    return rpsSession.applyMove(state, playerId, move.throw)
+  },
+  startNewRound: (state, players) => {
+    if (state.game !== 'rock_paper_scissors') return
+    rpsSession.startNewRound(state, players)
+  },
+  surrender: (state, playerId) => {
+    if (state.game !== 'rock_paper_scissors')
+      throw new Error('rock_paper_scissors engine: wrong state')
     return applySurrender(state, playerId)
   },
 }
@@ -65,6 +94,7 @@ const ticTacToeEngine: RoomGameEngine = {
 const enginesByKind: Record<GameKind, RoomGameEngine> = {
   connect4: connect4Engine,
   tic_tac_toe: ticTacToeEngine,
+  rock_paper_scissors: rockPaperScissorsEngine,
 }
 
 export function getEngine(kind: GameKind): RoomGameEngine {

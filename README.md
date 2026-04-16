@@ -1,26 +1,28 @@
 # Game room
 
-Monorepo for **browser tables** (Connect 4, tic-tac-toe), **lobby + room chat**, and a **WebSocket server** (`@gameroom/server`), **Vite + Tailwind** client (`@gameroom/client`), and shared types (`@gameroom/shared`). Package management uses **pnpm** workspaces.
+Monorepo for **browser tables** (Connect 4, tic-tac-toe, rock–paper–scissors), **lobby + room chat**, and a **WebSocket server** (`@gameroom/server`), **Vite + Tailwind** client (`@gameroom/client`), and shared types (`@gameroom/shared`). Package management uses **pnpm** workspaces.
+
+**Docs:** [Optional backlog](docs/todo.md) · [Adding a new game](docs/adding-a-game.md)
 
 ## Layout: separated client and server
 
-| Package                | Role                                                                                                                                             |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **`@gameroom/shared`** | **Wire protocol + domain types** (`ClientMessage`, `ServerMessage`, `GameState`, …). Both apps depend on this only — no client↔server imports.   |
-| **`@gameroom/server`** | **Authoritative game logic** and WebSockets. Serves **`GET /health`** (JSON, for probes) on the same HTTP server as the WS upgrade.              |
+| Package | Role |
+| ------- | ---- |
+| **`@gameroom/shared`** | **Wire protocol + domain types** (`ClientMessage`, `ServerMessage`, `GameState`, …). Both apps depend on this only — no client↔server imports. |
+| **`@gameroom/server`** | **Authoritative game logic** and WebSockets. Serves **`GET /health`** (JSON, for probes) on the same HTTP server as the WS upgrade. |
 | **`@gameroom/client`** | **Static UI**; talks to the server **only** via `WebSocket` using URLs from config (see below). Host on CDN/S3; point `VITE_WS_URL` at your API. |
 
 That split is the template: **ship HTML/JS/CSS from anywhere**, run **one long-lived Node process** (or many behind a load balancer) for real-time state.
 
 ## Configuration
 
-| Variable                | Where               | Purpose                                                                                             |
-| ----------------------- | ------------------- | --------------------------------------------------------------------------------------------------- |
-| `PORT`                  | Server              | HTTP + WebSocket listen port (default `3000`).                                                      |
-| `LOG_LEVEL`, `NODE_ENV` | Server              | Pino verbosity / JSON vs pretty (see **Logging**).                                                  |
-| `MAX_WS_MESSAGE_BYTES`  | Server              | Reject oversized WS frames (default `16384`).                                                       |
-| `VITE_WS_URL`           | Client (build-time) | Full WebSocket URL, e.g. `wss://api.example.com` when the client and API use **different origins**. |
-| `VITE_WS_PORT`          | Client (build-time) | Used **only** if `VITE_WS_URL` is unset: `ws(s)://<page-host>:<port>`.                              |
+| Variable | Where | Purpose |
+| -------- | ----- | ------- |
+| `PORT` | Server | HTTP + WebSocket listen port (default `3000`). |
+| `LOG_LEVEL`, `NODE_ENV` | Server | Pino verbosity / JSON vs pretty (see **Logging**). |
+| `MAX_WS_MESSAGE_BYTES` | Server | Reject oversized WS frames (default `16384`). |
+| `VITE_WS_URL` | Client (build-time) | Full WebSocket URL, e.g. `wss://api.example.com` when the client and API use **different origins**. |
+| `VITE_WS_PORT` | Client (build-time) | Used **only** if `VITE_WS_URL` is unset: `ws(s)://<page-host>:<port>`. |
 
 Copy **`packages/server/.env.example`** and **`packages/client/.env.example`** to `.env` in those packages (or export vars). The server loads `.env` via **`dotenv`** on startup.
 
@@ -103,12 +105,12 @@ Connection lifecycle, joins, drops, wins/draws, invalid JSON, and WebSocket erro
 
 The client uses a tiny **route tree** (no router framework):
 
-| Path           | Screen                                                                                      |
-| -------------- | ------------------------------------------------------------------------------------------- |
-| `/`            | **Home** — “Create room” (new random UUID) or “Join” (paste UUID or full `/room/...` link). |
-| `/room/<uuid>` | **Table** — enter display name, connect WebSocket, then play.                               |
+| Path | Screen |
+| ---- | ------ |
+| `/` | **Home** — “Create room” (new random UUID) or “Join” (paste UUID or full `/room/...` link). |
+| `/room/<uuid>` | **Table** — enter display name, connect WebSocket, then play. |
 
-- **`gameId` is always a UUID** for the room (`crypto.randomUUID()` on create). Share the **invite link** (`…/room/<uuid>`). The **match** still happens over `join_game` with that id.
+- **`gameId` is always a UUID** for the room (`crypto.randomUUID()` on create). Share the **invite link** (`…/room/<uuid>`). Players connect with **`join_room`** and that `roomId`.
 - **Legacy** `?gameId=<uuid>` and old **`/game/<uuid>`** URLs are redirected once to **`/room/<uuid>`**.
 
 ### Why “game full”?
@@ -131,91 +133,3 @@ After `pnpm run build`:
 - Run Node behind a process manager or container; use **`GET /health`** for readiness/liveness.
 
 For local iteration, the dev commands above are enough.
-
----
-
-## Example game state
-
-Illustrative JSON shape (not necessarily identical to every field the live server sends):
-
-```json
-{
-  "gameId": "a3f7c2d1-8b4e-4f6a-9c2d-1e5b3a7f0d8c",
-  "status": "in_progress",
-  "createdAt": "2026-04-14T12:00:00Z",
-  "updatedAt": "2026-04-14T12:04:37Z",
-  "players": {
-    "red": {
-      "id": "user_001",
-      "displayName": "Alice",
-      "connected": true,
-      "lastSeen": "2026-04-14T12:04:37Z"
-    },
-    "yellow": {
-      "id": "user_002",
-      "displayName": "Bob",
-      "connected": false,
-      "lastSeen": "2026-04-14T12:03:55Z"
-    }
-  },
-  "currentTurn": "yellow",
-  "board": [
-    [null, null, null, null, null, null, null],
-    [null, null, null, null, null, null, null],
-    [null, null, null, null, null, null, null],
-    [null, null, "red", null, null, null, null],
-    [null, null, "red", "yellow", null, null, null],
-    ["red", "yellow", "red", "yellow", "yellow", null, null]
-  ],
-  "moves": [
-    {
-      "player": "red",
-      "column": 0,
-      "row": 5,
-      "movedAt": "2026-04-14T12:01:00Z"
-    },
-    {
-      "player": "yellow",
-      "column": 3,
-      "row": 5,
-      "movedAt": "2026-04-14T12:01:22Z"
-    },
-    {
-      "player": "red",
-      "column": 2,
-      "row": 5,
-      "movedAt": "2026-04-14T12:02:10Z"
-    },
-    {
-      "player": "yellow",
-      "column": 4,
-      "row": 5,
-      "movedAt": "2026-04-14T12:02:44Z"
-    },
-    {
-      "player": "red",
-      "column": 2,
-      "row": 4,
-      "movedAt": "2026-04-14T12:03:20Z"
-    },
-    {
-      "player": "yellow",
-      "column": 1,
-      "row": 5,
-      "movedAt": "2026-04-14T12:03:55Z"
-    },
-    {
-      "player": "red",
-      "column": 2,
-      "row": 3,
-      "movedAt": "2026-04-14T12:04:37Z"
-    }
-  ],
-  "result": null,
-  "settings": {
-    "rows": 6,
-    "columns": 7,
-    "reconnectTimeoutSeconds": 60
-  }
-}
-```

@@ -1,9 +1,10 @@
 import type { Connect4State } from '@/connect4.js'
 import type { PlayerId } from '@/core.js'
+import type { RockPaperScissorsState } from '@/rockPaperScissors.js'
 import type { RoomSeatsTuple } from '@/tableSeat.js'
 import type { TicTacToeState } from '@/ticTacToe.js'
 
-export type GameKind = 'connect4' | 'tic_tac_toe'
+export type GameKind = 'connect4' | 'tic_tac_toe' | 'rock_paper_scissors'
 
 export interface GameListing {
   gameSessionId: string
@@ -11,7 +12,7 @@ export interface GameListing {
   status: 'in_progress' | 'completed' | 'abandoned'
 }
 
-export type AnyGameState = Connect4State | TicTacToeState
+export type AnyGameState = Connect4State | TicTacToeState | RockPaperScissorsState
 
 /** Waiting for the other seated player to accept a rematch for this session. */
 export interface PendingRematch {
