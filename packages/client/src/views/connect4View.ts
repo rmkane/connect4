@@ -13,6 +13,79 @@ import {
 const C4_RULES_DIALOG_ID = 'c4-rules-dialog'
 const C4_SURRENDER_DIALOG_ID = 'c4-surrender-dialog'
 
+/** Match wins: you vs opponent when seated; otherwise Red vs Yellow with names. */
+function connect4MatchWinsBanner(
+  snapshot: RoomSnapshot,
+  redId: PlayerId,
+  yellowId: PlayerId,
+  myPlayerId: PlayerId | null
+): TemplateResult {
+  const rScore = matchScoreFor(snapshot, redId)
+  const yScore = matchScoreFor(snapshot, yellowId)
+  const rName = displayNameFor(snapshot, redId)
+  const yName = displayNameFor(snapshot, yellowId)
+
+  const pill = (label: string, score: number, tone: 'red' | 'amber') => {
+    const ring =
+      tone === 'red'
+        ? 'border-red-200 ring-1 ring-red-100'
+        : 'border-amber-200 ring-1 ring-amber-100'
+    const num = tone === 'red' ? 'text-red-700' : 'text-amber-700'
+    return html`
+      <div
+        class="${ring} flex min-w-0 flex-1 flex-col items-center rounded-md border bg-white px-2 py-1 text-center shadow-sm"
+      >
+        <span class="text-[10px] font-semibold tracking-wide text-zinc-500 uppercase"
+          >${label}</span
+        >
+        <span class="${num} mt-0.5 text-lg leading-none font-bold tabular-nums">${score}</span>
+      </div>
+    `
+  }
+
+  if (myPlayerId === redId) {
+    return html`
+      <div
+        class="ml-auto flex max-w-52 min-w-0 shrink-0 items-stretch gap-1.5 sm:max-w-60"
+        role="status"
+        aria-label=${`Match wins in this room: you ${rScore}, ${yName} ${yScore}`}
+      >
+        ${pill('You', rScore, 'red')}
+        <span class="self-center text-[10px] font-semibold text-zinc-400" aria-hidden="true"
+          >vs</span
+        >
+        ${pill('Opp', yScore, 'amber')}
+      </div>
+    `
+  }
+  if (myPlayerId === yellowId) {
+    return html`
+      <div
+        class="ml-auto flex max-w-52 min-w-0 shrink-0 items-stretch gap-1.5 sm:max-w-60"
+        role="status"
+        aria-label=${`Match wins in this room: you ${yScore}, ${rName} ${rScore}`}
+      >
+        ${pill('You', yScore, 'amber')}
+        <span class="self-center text-[10px] font-semibold text-zinc-400" aria-hidden="true"
+          >vs</span
+        >
+        ${pill('Opp', rScore, 'red')}
+      </div>
+    `
+  }
+  return html`
+    <div
+      class="ml-auto flex max-w-52 min-w-0 shrink-0 items-stretch gap-1.5 sm:max-w-60"
+      role="status"
+      aria-label=${`Match wins: Red ${rName} ${rScore}, Yellow ${yName} ${yScore}`}
+    >
+      ${pill('Red', rScore, 'red')}
+      <span class="self-center text-[10px] font-semibold text-zinc-400" aria-hidden="true">vs</span>
+      ${pill('Yellow', yScore, 'amber')}
+    </div>
+  `
+}
+
 function canDrop(state: Connect4State, myPlayerId: PlayerId | null): boolean {
   return state.status === 'in_progress' && myPlayerId !== null && state.currentTurn === myPlayerId
 }
@@ -156,8 +229,6 @@ function boardTemplate(
   const detail = detailLine(state, snapshot, myPlayerId)
   const youLine = youBannerLine(snapshot, state, myPlayerId)
   const turnLine = turnBannerLine(state, snapshot, myPlayerId)
-  const rScore = matchScoreFor(snapshot, redId)
-  const yScore = matchScoreFor(snapshot, yellowId)
 
   const rulesBody = html`
     <div class="space-y-3">
@@ -196,13 +267,7 @@ function boardTemplate(
         <span class="min-w-0 truncate sm:max-w-[40%]" title=${youLine}>${youLine}</span>
         <span class="hidden h-3 w-px shrink-0 bg-zinc-300 md:block" aria-hidden="true"></span>
         <span class="min-w-0 flex-1 truncate text-zinc-700" title=${turnLine}>${turnLine}</span>
-        <span
-          class="ml-auto shrink-0 font-mono font-semibold text-zinc-900 tabular-nums sm:text-sm"
-          title="Games won (red — yellow)"
-        >
-          <span class="text-red-700">${rScore}</span><span class="mx-0.5 text-zinc-400">—</span
-          ><span class="text-amber-700">${yScore}</span>
-        </span>
+        ${connect4MatchWinsBanner(snapshot, redId, yellowId, myPlayerId)}
       </div>
 
       <div class="flex w-full max-w-[min(100%,28rem)] flex-wrap items-center justify-center gap-2">

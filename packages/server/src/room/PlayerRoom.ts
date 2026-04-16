@@ -372,19 +372,25 @@ export class PlayerRoom {
   disconnect(seat: Color) {
     const leaving = this.seats[seat]
     const leavingId = leaving?.id ?? null
-    const otherSeat: Color = seat === 'red' ? 'yellow' : 'red'
-    const other = this.seats[otherSeat]
+    const prevLeaderId = this.leaderId
 
     this.sockets.delete(seat)
     this.seats[seat] = null
     if (leaving) this.matchPoints.delete(leaving.id)
 
-    if (leavingId && leavingId === this.leaderId) {
-      if (other) {
-        this.leaderId = other.id
-        this.pushRoomSystemChat(`${other.displayName} is now table host (previous host left).`)
-      } else {
-        this.leaderId = null
+    const remaining = [this.seats.red, this.seats.yellow].filter((p): p is PlayerInfo => Boolean(p))
+    if (remaining.length === 0) {
+      this.leaderId = null
+    } else if (leavingId && leavingId === prevLeaderId) {
+      const nextLeader = remaining[0]
+      this.leaderId = nextLeader.id
+      this.pushRoomSystemChat(`${nextLeader.displayName} is now table host (previous host left).`)
+    } else if (!this.leaderId || !this.isSeatedPlayer(this.leaderId)) {
+      // Repair stale host state so a seated player can always use host actions.
+      const nextLeader = remaining[0]
+      this.leaderId = nextLeader.id
+      if (prevLeaderId !== nextLeader.id) {
+        this.pushRoomSystemChat(`${nextLeader.displayName} is now table host.`)
       }
     }
 

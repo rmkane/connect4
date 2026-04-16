@@ -8,6 +8,77 @@ import { displayNameFor, markForPlayer, matchScoreFor } from '@/views/playerLabe
 const TTT_RULES_DIALOG_ID = 'ttt-rules-dialog'
 const TTT_SURRENDER_DIALOG_ID = 'ttt-surrender-dialog'
 
+/** Match wins: you vs opponent when seated; otherwise X (left) vs O (right) with names. */
+function ticTacToeMatchWinsBanner(
+  snapshot: RoomSnapshot,
+  xId: PlayerId,
+  oId: PlayerId,
+  myPlayerId: PlayerId | null
+): TemplateResult {
+  const xScore = matchScoreFor(snapshot, xId)
+  const oScore = matchScoreFor(snapshot, oId)
+  const xName = displayNameFor(snapshot, xId)
+  const oName = displayNameFor(snapshot, oId)
+
+  const pill = (label: string, score: number, mark: 'X' | 'O') => {
+    const ring =
+      mark === 'X' ? 'border-red-200 ring-1 ring-red-100' : 'border-blue-200 ring-1 ring-blue-100'
+    const num = mark === 'X' ? 'text-red-700' : 'text-blue-700'
+    return html`
+      <div
+        class="${ring} flex min-w-0 flex-1 flex-col items-center rounded-md border bg-white px-2 py-1 text-center shadow-sm"
+      >
+        <span class="text-[10px] font-semibold tracking-wide text-zinc-500 uppercase"
+          >${label}</span
+        >
+        <span class="${num} mt-0.5 text-lg leading-none font-bold tabular-nums">${score}</span>
+      </div>
+    `
+  }
+
+  if (myPlayerId === xId) {
+    return html`
+      <div
+        class="ml-auto flex max-w-52 min-w-0 shrink-0 items-stretch gap-1.5 sm:max-w-60"
+        role="status"
+        aria-label=${`Match wins: you ${xScore} as X, ${oName} ${oScore} as O`}
+      >
+        ${pill('You', xScore, 'X')}
+        <span class="self-center text-[10px] font-semibold text-zinc-400" aria-hidden="true"
+          >vs</span
+        >
+        ${pill('Opp', oScore, 'O')}
+      </div>
+    `
+  }
+  if (myPlayerId === oId) {
+    return html`
+      <div
+        class="ml-auto flex max-w-52 min-w-0 shrink-0 items-stretch gap-1.5 sm:max-w-60"
+        role="status"
+        aria-label=${`Match wins: you ${oScore} as O, ${xName} ${xScore} as X`}
+      >
+        ${pill('You', oScore, 'O')}
+        <span class="self-center text-[10px] font-semibold text-zinc-400" aria-hidden="true"
+          >vs</span
+        >
+        ${pill('Opp', xScore, 'X')}
+      </div>
+    `
+  }
+  return html`
+    <div
+      class="ml-auto flex max-w-52 min-w-0 shrink-0 items-stretch gap-1.5 sm:max-w-60"
+      role="status"
+      aria-label=${`Match wins: X ${xName} ${xScore}, O ${oName} ${oScore}`}
+    >
+      ${pill('X', xScore, 'X')}
+      <span class="self-center text-[10px] font-semibold text-zinc-400" aria-hidden="true">vs</span>
+      ${pill('O', oScore, 'O')}
+    </div>
+  `
+}
+
 function canPlay(
   state: TicTacToeState,
   myPlayerId: PlayerId | null,
@@ -121,8 +192,6 @@ function boardTemplate(
 
   const youLine = youBannerLine(snapshot, state, myPlayerId)
   const turnLine = turnBannerLine(state, snapshot, myPlayerId)
-  const xScore = matchScoreFor(snapshot, xId)
-  const oScore = matchScoreFor(snapshot, oId)
 
   const myMark = myPlayerId ? markForPlayer(state.players, myPlayerId) : null
   const seatNote =
@@ -165,13 +234,7 @@ function boardTemplate(
         <span class="min-w-0 truncate sm:max-w-[40%]" title=${youLine}>${youLine}</span>
         <span class="hidden h-3 w-px shrink-0 bg-zinc-300 md:block" aria-hidden="true"></span>
         <span class="min-w-0 flex-1 truncate text-zinc-700" title=${turnLine}>${turnLine}</span>
-        <span
-          class="ml-auto shrink-0 font-mono font-semibold text-zinc-900 tabular-nums sm:text-sm"
-          title="Games won (X — O)"
-        >
-          <span class="text-red-700">${xScore}</span><span class="mx-0.5 text-zinc-400">—</span
-          ><span class="text-blue-700">${oScore}</span>
-        </span>
+        ${ticTacToeMatchWinsBanner(snapshot, xId, oId, myPlayerId)}
       </div>
 
       <div class="flex w-full max-w-[min(100%,28rem)] flex-wrap items-center justify-center gap-2">
