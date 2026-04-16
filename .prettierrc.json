@@ -8,7 +8,7 @@
   "arrowParens": "always",
   "endOfLine": "lf",
   "plugins": ["@trivago/prettier-plugin-sort-imports", "prettier-plugin-tailwindcss"],
-  "importOrder": ["^react$", "^next", "^node:", "<THIRD_PARTY_MODULES>", "^@connect4/", "^@/(.*)$"],
+  "importOrder": ["^react$", "^next", "^node:", "<THIRD_PARTY_MODULES>", "^@gameroom/", "^@/(.*)$"],
   "importOrderSeparation": true,
   "importOrderSortSpecifiers": true
 }

@@ -3,8 +3,8 @@ import { randomUUID } from 'node:crypto'
 import type { Logger } from 'pino'
 import { WebSocket } from 'ws'
 
-import type { ChatMessagePayload, PlayerId } from '@connect4/shared'
-import { CHAT_HISTORY_LIMIT, sanitizeChatText } from '@connect4/shared'
+import type { ChatMessagePayload, PlayerId } from '@gameroom/shared'
+import { CHAT_HISTORY_LIMIT, sanitizeChatText } from '@gameroom/shared'
 
 import { logger } from '@/logger.js'
 

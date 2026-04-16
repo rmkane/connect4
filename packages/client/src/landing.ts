@@ -1,6 +1,6 @@
 import { html, nothing, render } from 'lit'
 
-import type { PublicRoomSummary, RoomsListResponse } from '@connect4/shared'
+import type { PublicRoomSummary, RoomsListResponse } from '@gameroom/shared'
 
 import { clientConfig } from '@/config.js'
 import { logger } from '@/logger.js'

@@ -1,14 +1,14 @@
-# Connect 4
+# Game room
 
-Monorepo with a **WebSocket server** (`@connect4/server`), a **Vite + Tailwind** browser client (`@connect4/client`), and shared types (`@connect4/shared`). Package management uses **pnpm** workspaces.
+Monorepo for **browser tables** (Connect 4, tic-tac-toe), **lobby + room chat**, and a **WebSocket server** (`@gameroom/server`), **Vite + Tailwind** client (`@gameroom/client`), and shared types (`@gameroom/shared`). Package management uses **pnpm** workspaces.
 
 ## Layout: separated client and server
 
 | Package                | Role                                                                                                                                             |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **`@connect4/shared`** | **Wire protocol + domain types** (`ClientMessage`, `ServerMessage`, `GameState`, …). Both apps depend on this only — no client↔server imports.   |
-| **`@connect4/server`** | **Authoritative game logic** and WebSockets. Serves **`GET /health`** (JSON, for probes) on the same HTTP server as the WS upgrade.              |
-| **`@connect4/client`** | **Static UI**; talks to the server **only** via `WebSocket` using URLs from config (see below). Host on CDN/S3; point `VITE_WS_URL` at your API. |
+| **`@gameroom/shared`** | **Wire protocol + domain types** (`ClientMessage`, `ServerMessage`, `GameState`, …). Both apps depend on this only — no client↔server imports.   |
+| **`@gameroom/server`** | **Authoritative game logic** and WebSockets. Serves **`GET /health`** (JSON, for probes) on the same HTTP server as the WS upgrade.              |
+| **`@gameroom/client`** | **Static UI**; talks to the server **only** via `WebSocket` using URLs from config (see below). Host on CDN/S3; point `VITE_WS_URL` at your API. |
 
 That split is the template: **ship HTML/JS/CSS from anywhere**, run **one long-lived Node process** (or many behind a load balancer) for real-time state.
 
@@ -24,11 +24,11 @@ That split is the template: **ship HTML/JS/CSS from anywhere**, run **one long-l
 
 Copy **`packages/server/.env.example`** and **`packages/client/.env.example`** to `.env` in those packages (or export vars). The server loads `.env` via **`dotenv`** on startup.
 
-**Health check:** `curl -s http://127.0.0.1:3000/health` → `{"ok":true,"service":"connect4-ws","uptime":…}`.
+**Health check:** `curl -s http://127.0.0.1:3000/health` → `{"ok":true,"service":"gameroom-ws","uptime":…}`.
 
 ## Using this repo as a template
 
-1. **Rename** the `@connect4/*` scope in `package.json` files and `pnpm-workspace.yaml` paths if you want your own org name.
+1. **Rename** the `@gameroom/*` scope in `package.json` files if you want your own org name (search/replace the scope string and run `pnpm install`).
 2. **Extend the protocol** in `packages/shared` first (types + message unions), then implement server handlers and client UI.
 3. **Keep rules on the server**; clients only send intents (`join_game`, `drop_piece`, …) and render `game_state`.
 4. **Production gaps** you will still want for real games: **auth / player identity**, **rate limiting**, **persistence** (Redis/DB for rooms), **reconnect tokens**, **tests** (unit + one integration test for WS), **observability** (metrics, trace ids), **TLS** (`wss://`), and a **reverse proxy** (nginx, Caddy, cloud LB) in front of Node.
@@ -66,7 +66,7 @@ pnpm run format:check  # CI-style check
 
 TypeScript sources use the `@/` path alias (mapped to each package’s `src/`). ESLint’s `no-restricted-imports` rule rejects `./` and `../` imports so new code stays on `@/`.
 
-Prettier uses `@trivago/prettier-plugin-sort-imports` (with `^@connect4/` and `^@/` groups) and `prettier-plugin-tailwindcss` (must stay **last** in the `plugins` array).
+Prettier uses `@trivago/prettier-plugin-sort-imports` (with `^@gameroom/` and `^@/` groups) and `prettier-plugin-tailwindcss` (must stay **last** in the `plugins` array).
 
 ## Run in development
 

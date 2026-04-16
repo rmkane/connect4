@@ -1,4 +1,4 @@
-import type { PlayerId, RoomSnapshot } from '@connect4/shared'
+import type { PlayerId, RoomSnapshot } from '@gameroom/shared'
 
 export function displayNameFor(
   snapshot: RoomSnapshot,

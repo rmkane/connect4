@@ -1,13 +1,15 @@
 import { type TemplateResult, html, nothing, render } from 'lit'
 import { live } from 'lit/directives/live.js'
 
-import type { ChatMessagePayload, ClientMessage, ServerMessage } from '@connect4/shared'
-import { CHAT_MAX_TEXT_LENGTH } from '@connect4/shared'
+import type { ChatMessagePayload, ClientMessage, ServerMessage } from '@gameroom/shared'
+import { CHAT_MAX_TEXT_LENGTH } from '@gameroom/shared'
 
 import { clientConfig } from '@/config.js'
 import { logger } from '@/logger.js'
 
-const LS_NAME = 'connect4_global_chat_display_name'
+const LS_NAME = 'gameroom_global_chat_display_name'
+/** Previous app id; still read so display names survive the rename. */
+const LS_NAME_LEGACY = 'connect4_global_chat_display_name'
 
 function formatTime(ts: number): string {
   try {
@@ -31,7 +33,9 @@ export function mountGlobalChatWidget(
   let messages: ChatMessagePayload[] = []
   let draft = ''
   let displayName =
-    (typeof localStorage !== 'undefined' && localStorage.getItem(LS_NAME)?.trim()) || 'Guest'
+    (typeof localStorage !== 'undefined' &&
+      (localStorage.getItem(LS_NAME)?.trim() || localStorage.getItem(LS_NAME_LEGACY)?.trim())) ||
+    'Guest'
 
   function send(msg: ClientMessage) {
     ws?.send(JSON.stringify(msg))
@@ -83,6 +87,7 @@ export function mountGlobalChatWidget(
     displayName = next.trim().slice(0, 64) || 'Guest'
     try {
       localStorage.setItem(LS_NAME, displayName)
+      localStorage.removeItem(LS_NAME_LEGACY)
     } catch {
       /* ignore */
     }

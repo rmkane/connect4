@@ -1,4 +1,4 @@
-import type { PublicRoomSummary } from '@connect4/shared'
+import type { PublicRoomSummary } from '@gameroom/shared'
 
 import { logger } from '@/logger.js'
 import { PlayerRoom } from '@/room/PlayerRoom.js'

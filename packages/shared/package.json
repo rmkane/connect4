@@ -1,5 +1,5 @@
 {
-  "name": "@connect4/shared",
+  "name": "@gameroom/shared",
   "version": "1.0.0",
   "type": "module",
   "main": "./dist/index.js",

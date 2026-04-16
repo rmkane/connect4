@@ -2,7 +2,7 @@ import 'dotenv/config'
 import { createServer } from 'http'
 import { type RawData, WebSocketServer } from 'ws'
 
-import { CHAT_MIN_INTERVAL_MS, ClientMessage, type Color, type PlayerId } from '@connect4/shared'
+import { CHAT_MIN_INTERVAL_MS, ClientMessage, type Color, type PlayerId } from '@gameroom/shared'
 
 import { GlobalChat } from '@/chat/GlobalChat.js'
 import { serverConfig } from '@/config.js'
@@ -47,7 +47,7 @@ const server = createServer((req, res) => {
     res.end(
       JSON.stringify({
         ok: true,
-        service: 'connect4-ws',
+        service: 'gameroom-ws',
         uptime: process.uptime(),
       })
     )

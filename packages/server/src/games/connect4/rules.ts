@@ -1,5 +1,5 @@
-import { COLS, ROWS } from '@connect4/shared'
-import type { PlayerId } from '@connect4/shared'
+import { COLS, ROWS } from '@gameroom/shared'
+import type { PlayerId } from '@gameroom/shared'
 
 export type Connect4Cell = PlayerId | null
 

@@ -1,5 +1,5 @@
 {
-  "name": "@connect4/server",
+  "name": "@gameroom/server",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
@@ -7,7 +7,7 @@
     "build": "tsc && tsc-alias"
   },
   "dependencies": {
-    "@connect4/shared": "workspace:*",
+    "@gameroom/shared": "workspace:*",
     "dotenv": "^17.4.2",
     "pino": "^10.3.1",
     "ws": "^8.20.0"

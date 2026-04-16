@@ -1,5 +1,6 @@
 {
-  "name": "connect4",
+  "name": "gameroom",
+  "description": "Local multiplayer game tables (Connect 4, tic-tac-toe), lobby, and chat — pnpm monorepo.",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -7,8 +8,8 @@
   "packageManager": "pnpm@10.18.3",
   "scripts": {
     "build": "pnpm -r run build",
-    "dev:server": "pnpm --filter @connect4/server run dev",
-    "dev:client": "pnpm --filter @connect4/client run dev",
+    "dev:server": "pnpm --filter @gameroom/server run dev",
+    "dev:client": "pnpm --filter @gameroom/client run dev",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

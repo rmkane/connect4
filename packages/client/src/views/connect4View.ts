@@ -1,6 +1,6 @@
 import { type TemplateResult, html, nothing, render } from 'lit'
 
-import type { Connect4State, PlayerId, RoomSnapshot } from '@connect4/shared'
+import type { Connect4State, PlayerId, RoomSnapshot } from '@gameroom/shared'
 
 import {
   connect4GameSide,

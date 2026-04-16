@@ -16,8 +16,8 @@ import type {
   RoomSnapshot,
   ServerMessage,
   TicTacToeState,
-} from '@connect4/shared'
-import { CHAT_HISTORY_LIMIT, sanitizeChatText } from '@connect4/shared'
+} from '@gameroom/shared'
+import { CHAT_HISTORY_LIMIT, sanitizeChatText } from '@gameroom/shared'
 
 import * as connect4 from '@/games/connect4/rules.js'
 import * as ticTacToe from '@/games/ticTacToe/rules.js'

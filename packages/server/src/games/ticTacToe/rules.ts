@@ -1,4 +1,4 @@
-import type { PlayerId, TicTacToeCell } from '@connect4/shared'
+import type { PlayerId, TicTacToeCell } from '@gameroom/shared'
 
 const N = 3
 

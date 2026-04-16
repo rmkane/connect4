@@ -1,6 +1,6 @@
 import { type TemplateResult, html, nothing, render } from 'lit'
 
-import type { PlayerId, RoomSnapshot, TicTacToeState } from '@connect4/shared'
+import type { PlayerId, RoomSnapshot, TicTacToeState } from '@gameroom/shared'
 
 import { displayNameFor, markForPlayer, matchScoreFor } from '@/views/playerLabels.js'
 
@@ -113,7 +113,7 @@ function boardTemplate(
       class="mx-auto flex max-w-full flex-col gap-6 px-2 py-2 font-sans sm:px-4 sm:py-4 lg:flex-row lg:items-start lg:justify-center lg:gap-10"
     >
       <section
-        class="w-full max-w-md min-w-0 shrink-0 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm lg:w-[22rem]"
+        class="w-full max-w-md min-w-0 shrink-0 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm lg:w-88"
         aria-live="polite"
       >
         <h2 class="text-lg font-semibold text-zinc-900">${headline(state, snapshot)}</h2>
@@ -181,7 +181,7 @@ function boardTemplate(
 
       <div class="flex shrink-0 flex-col items-center lg:items-start">
         <div
-          class="grid w-max shrink-0 [grid-auto-rows:2.5rem] grid-cols-3 gap-1"
+          class="grid w-max shrink-0 auto-rows-[2.5rem] grid-cols-3 gap-1"
           aria-label="Tic-tac-toe board"
         >
           ${rows.flat()}

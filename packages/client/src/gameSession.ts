@@ -8,8 +8,8 @@ import type {
   PlayerId,
   RoomSnapshot,
   ServerMessage,
-} from '@connect4/shared'
-import { CHAT_MAX_TEXT_LENGTH } from '@connect4/shared'
+} from '@gameroom/shared'
+import { CHAT_MAX_TEXT_LENGTH } from '@gameroom/shared'
 
 import { clientConfig } from '@/config.js'
 import { logger } from '@/logger.js'

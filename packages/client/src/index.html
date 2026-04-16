@@ -3,20 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Connect 4</title>
+    <title>Game room</title>
   </head>
   <body
-    class="flex min-h-screen flex-col bg-zinc-100 [font-feature-settings:'kern'_1,'liga'_1] text-zinc-900 antialiased"
+    class="flex min-h-screen flex-col bg-zinc-100 font-features-['kern'_1,'liga'_1] text-zinc-900 antialiased"
   >
     <header
-      class="sticky top-0 z-20 border-b border-zinc-200/80 bg-white/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80"
+      class="sticky top-0 z-20 border-b border-zinc-200/80 bg-white/95 shadow-sm backdrop-blur supports-backdrop-filter:bg-white/80"
     >
       <div
         class="mx-auto flex h-14 w-full max-w-5xl items-center justify-between gap-4 px-4 sm:px-6"
       >
         <a href="/" class="flex items-baseline gap-2 no-underline hover:opacity-90">
-          <span class="text-lg font-bold tracking-tight text-red-800">Connect 4</span>
-          <span class="hidden text-xs font-medium text-zinc-500 sm:inline">Drop four in a row</span>
+          <span class="text-lg font-bold tracking-tight text-red-800">Game room</span>
+          <span class="hidden text-xs font-medium text-zinc-500 sm:inline">
+            Connect 4, tic-tac-toe &amp; chat
+          </span>
         </a>
         <nav class="text-sm">
           <!-- prettier-ignore -->
@@ -47,7 +49,7 @@
       <div
         class="mx-auto flex w-full max-w-5xl flex-col items-center justify-center gap-1 px-4 py-6 text-center sm:flex-row sm:gap-4 sm:px-6"
       >
-        <p class="text-sm text-zinc-600">Local multiplayer · WebSocket server</p>
+        <p class="text-sm text-zinc-600">Local multiplayer games · WebSocket server</p>
         <span class="hidden text-zinc-300 sm:inline" aria-hidden="true">·</span>
         <p class="text-xs text-zinc-500">
           Open two browsers or tabs on the same room link to play.
