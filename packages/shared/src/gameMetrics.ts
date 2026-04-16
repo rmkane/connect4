@@ -12,6 +12,29 @@ export type GameMetricsEndReason =
   | 'abandoned'
   | 'match_wins'
 
+/** Short phrase used after “wins (…)” in recap copy and room chat. */
+export function outcomeDetailPhrase(reason: string): string {
+  switch (reason) {
+    case 'four_in_a_row':
+      return 'four in a row'
+    case 'three_in_a_row':
+    case 'three_in_row':
+      return 'three in a row'
+    case 'match_wins':
+      return 'match wins'
+    case 'forfeit':
+      return 'forfeit'
+    case 'draw':
+      return 'draw'
+    case 'surrender':
+      return 'surrender'
+    case 'abandoned':
+      return 'abandoned'
+    default:
+      return reason
+  }
+}
+
 export interface GameTurnMetric {
   playerId: PlayerId
   /** Wall time from “your turn started” until this decision (move or surrender). */

@@ -6,6 +6,19 @@ import type { TicTacToeState } from '@/ticTacToe.js'
 
 export type GameKind = 'connect4' | 'tic_tac_toe' | 'rock_paper_scissors'
 
+/** Single source for picker order and server registration checks. Add new kinds here first. */
+export const TABLE_GAME_KINDS: readonly GameKind[] = [
+  'connect4',
+  'tic_tac_toe',
+  'rock_paper_scissors',
+] as const
+
+export const GAME_KIND_LABELS: Record<GameKind, string> = {
+  connect4: 'Connect 4',
+  tic_tac_toe: 'Tic-tac-toe',
+  rock_paper_scissors: 'Rock paper scissors',
+}
+
 export interface GameListing {
   gameSessionId: string
   kind: GameKind

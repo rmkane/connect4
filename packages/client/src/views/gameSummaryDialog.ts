@@ -1,6 +1,7 @@
 import { type TemplateResult, html } from 'lit'
 
 import type { GameMetricsSummary, PlayerId, TableSeatIndex } from '@gameroom/shared'
+import { GAME_KIND_LABELS, outcomeDetailPhrase } from '@gameroom/shared'
 
 import { APP_MODAL_PANEL_WIDE_CLASS, closeModalById } from '@/views/appModal.js'
 
@@ -27,17 +28,7 @@ function outcomeDescription(s: GameMetricsSummary): string {
     return `${name(outcome.winnerId)} won by surrender.`
   }
   if (outcome.winnerId) {
-    const r = outcome.reason
-    const detail =
-      r === 'four_in_a_row'
-        ? 'four in a row'
-        : r === 'three_in_a_row'
-          ? 'three in a row'
-          : r === 'match_wins'
-            ? 'match wins'
-            : r === 'forfeit'
-              ? 'forfeit'
-              : r
+    const detail = outcomeDetailPhrase(outcome.reason)
     return `${name(outcome.winnerId)} wins (${detail}).`
   }
   return 'Game completed.'
@@ -70,13 +61,7 @@ export function gameSummaryDialog(
       <p class="mt-2 text-sm leading-relaxed text-zinc-600">${outcomeDescription(summary)}</p>
       <dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         <dt class="text-zinc-500">Game</dt>
-        <dd class="font-medium text-zinc-900">
-          ${summary.gameKind === 'connect4'
-            ? 'Connect 4'
-            : summary.gameKind === 'tic_tac_toe'
-              ? 'Tic-tac-toe'
-              : 'Rock paper scissors'}
-        </dd>
+        <dd class="font-medium text-zinc-900">${GAME_KIND_LABELS[summary.gameKind]}</dd>
         <dt class="text-zinc-500">Total time</dt>
         <dd class="font-medium text-zinc-900">${formatDurationMs(summary.gameDurationMs)}</dd>
         <dt class="text-zinc-500">Turns played</dt>

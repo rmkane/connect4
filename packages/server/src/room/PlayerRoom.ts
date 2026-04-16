@@ -30,7 +30,6 @@ import {
   sanitizeRoomTitle,
   seatedPlayerCount,
   tableSeatIndexForPlayer,
-  wireRockPaperScissorsForViewer,
 } from '@gameroom/shared'
 
 import { getEngine, getEngineForActiveState } from '@/game/gameEngines.js'
@@ -74,17 +73,16 @@ export class PlayerRoom {
   }
 
   /**
-   * @param forPlayerId When set, rock-paper-scissors `activeGame` hides the opponent’s in-flight
-   * throw until both players have committed (per-connection `room_state`).
+   * @param forPlayerId Some games redact `activeGame` per viewer (see `RoomGameEngine.wireActiveSnapshot`).
    */
   getSnapshot(forPlayerId?: PlayerId): RoomSnapshot {
     const activeGame = this.activeGame
       ? (JSON.parse(JSON.stringify(this.activeGame)) as AnyGameState)
       : null
-    const activeOut =
-      activeGame && activeGame.game === 'rock_paper_scissors'
-        ? wireRockPaperScissorsForViewer(activeGame, forPlayerId)
-        : activeGame
+    const activeOut = activeGame
+      ? (getEngineForActiveState(activeGame).wireActiveSnapshot?.(activeGame, forPlayerId) ??
+        activeGame)
+      : null
     return {
       roomId: this.roomId,
       roomTitle: this.roomTitle,
@@ -258,51 +256,25 @@ export class PlayerRoom {
     return this.seats[idx]!.displayName
   }
 
-  private gameLabel(game: AnyGameState['game']): string {
-    if (game === 'connect4') return 'Connect 4'
-    if (game === 'tic_tac_toe') return 'Tic-tac-toe'
-    return 'Rock paper scissors'
-  }
-
   private announceGameStarted(): void {
     const g = this.activeGame
     if (!g || g.status !== 'in_progress') return
-    const opener = this.displayNameFor(g.currentTurn)
-    const label = this.gameLabel(g.game)
-    const text =
-      g.game === 'tic_tac_toe'
-        ? `${label} started — ${opener} goes first (O).`
-        : g.game === 'rock_paper_scissors'
-          ? `${label} started — first to ${g.winsToWinMatch} hand wins takes the match.`
-          : `${label} started — ${opener} goes first.`
-    this.pushRoomSystemChat(text)
+    const engine = getEngineForActiveState(g)
+    const ctx: { displayNameFor: (id: PlayerId) => string } = {
+      displayNameFor: (id) => this.displayNameFor(id),
+    }
+    const text = engine.announceGameStarted(g, ctx)
+    if (text) this.pushRoomSystemChat(text)
   }
 
   private announceGameFinished(g: AnyGameState): void {
     if (g.status !== 'completed' || !g.result) return
-    const label = this.gameLabel(g.game)
-    const r = g.result
-    if (r.winner === null) {
-      this.pushRoomSystemChat(`${label} ended in a draw.`)
-      return
+    const engine = getEngineForActiveState(g)
+    const ctx: { displayNameFor: (id: PlayerId) => string } = {
+      displayNameFor: (id) => this.displayNameFor(id),
     }
-    const winnerName = this.displayNameFor(r.winner)
-    if (r.reason === 'surrender') {
-      const loserId = g.players[0] === r.winner ? g.players[1] : g.players[0]
-      this.pushRoomSystemChat(`${this.displayNameFor(loserId)} surrendered — ${winnerName} wins.`)
-      return
-    }
-    const phrase =
-      r.reason === 'four_in_a_row'
-        ? 'four in a row'
-        : r.reason === 'three_in_row'
-          ? 'three in a row'
-          : r.reason === 'match_wins'
-            ? 'match wins'
-            : r.reason === 'forfeit'
-              ? 'forfeit'
-              : r.reason
-    this.pushRoomSystemChat(`${label} ended — ${winnerName} wins (${phrase}).`)
+    const text = engine.announceGameFinished(g, ctx)
+    if (text) this.pushRoomSystemChat(text)
   }
 
   private pushRoomSystemChat(text: string): void {

@@ -22,15 +22,17 @@ import {
 
 import { chatLogWasFollowingTail, scrollChatLogToBottomById } from '@/chatScroll.js'
 import { clientConfig } from '@/config.js'
+import {
+  TABLE_GAME_PICKER_CARDS,
+  boardIsUnstarted as boardIsUnstartedForGame,
+  paintRegisteredTableGame,
+} from '@/games/tableRegistry.js'
 import { logger } from '@/logger.js'
 import { navigateHome } from '@/router.js'
 import { clearSessionContext, paintRoomSessionChrome } from '@/sessionContext.js'
 import { alertModal, closeModalById, openModalById } from '@/views/appModal.js'
-import { renderConnect4View } from '@/views/connect4View.js'
 import { gameSummaryDialog } from '@/views/gameSummaryDialog.js'
 import { rematchOfferDialog } from '@/views/rematchOfferDialog.js'
-import { renderRockPaperScissorsView } from '@/views/rockPaperScissorsView.js'
-import { renderTicTacToeView } from '@/views/ticTacToeView.js'
 
 const ROOM_CHAT_LOG_ID = 'gameroom-room-chat-log'
 const ROOM_DISPLAY_NAME_MAX = 64
@@ -42,11 +44,7 @@ const REMATCH_OFFER_DLG_ID = 'gs-rematch-offer-dlg'
 export type GameSessionHandle = { destroy: () => void }
 
 function boardIsUnstarted(ag: AnyGameState): boolean {
-  if (ag.game === 'connect4') return ag.board.every((row) => row.every((c) => c === null))
-  if (ag.game === 'rock_paper_scissors') {
-    return ag.completedRounds === 0 && ag.roundThrows[0] === null && ag.roundThrows[1] === null
-  }
-  return ag.board.every((row) => row.every((c) => c === null))
+  return boardIsUnstartedForGame(ag)
 }
 
 function formatChatTime(ts: number): string {
@@ -290,125 +288,15 @@ export function mountGameSession(opts: {
         ? { show: true, onOpen: openGameRecap }
         : null
 
-    if (s.activeGame.game === 'connect4') {
-      const game = s.activeGame
-      renderConnect4View(
-        s,
-        game,
-        (column) => {
-          logger.debug({ roomId, column }, 'sending connect4 move')
-          send({
-            type: 'game_move',
-            roomId,
-            gameSessionId: game.gameSessionId,
-            move: { game: 'connect4', column },
-          })
-        },
-        {
-          offer: () => {
-            logger.debug({ roomId }, 'rematch_offer')
-            send({ type: 'rematch_offer', roomId, gameSessionId: game.gameSessionId })
-          },
-          accept: () => {
-            send({ type: 'rematch_accept', roomId, gameSessionId: game.gameSessionId })
-          },
-          decline: () => {
-            send({ type: 'rematch_decline', roomId, gameSessionId: game.gameSessionId })
-          },
-          cancel: () => {
-            send({ type: 'rematch_cancel', roomId, gameSessionId: game.gameSessionId })
-          },
-        },
-        () => {
-          logger.debug({ roomId }, 'dismiss_completed_game')
-          send({ type: 'dismiss_completed_game', roomId })
-        },
-        () => {
-          logger.debug({ roomId }, 'surrender connect4')
-          send({ type: 'surrender', roomId, gameSessionId: game.gameSessionId })
-        },
-        myPlayerId,
-        recapForSession
-      )
-      return
-    }
-
-    if (s.activeGame.game === 'tic_tac_toe') {
-      const ttt = s.activeGame
-      renderTicTacToeView(
-        s,
-        ttt,
-        (row, col) => {
-          logger.debug({ roomId, row, col }, 'sending tic-tac-toe move')
-          send({
-            type: 'game_move',
-            roomId,
-            gameSessionId: ttt.gameSessionId,
-            move: { game: 'tic_tac_toe', row, col },
-          })
-        },
-        {
-          offer: () => {
-            send({ type: 'rematch_offer', roomId, gameSessionId: ttt.gameSessionId })
-          },
-          accept: () => {
-            send({ type: 'rematch_accept', roomId, gameSessionId: ttt.gameSessionId })
-          },
-          decline: () => {
-            send({ type: 'rematch_decline', roomId, gameSessionId: ttt.gameSessionId })
-          },
-          cancel: () => {
-            send({ type: 'rematch_cancel', roomId, gameSessionId: ttt.gameSessionId })
-          },
-        },
-        () => {
-          send({ type: 'dismiss_completed_game', roomId })
-        },
-        () => {
-          send({ type: 'surrender', roomId, gameSessionId: ttt.gameSessionId })
-        },
-        myPlayerId,
-        recapForSession
-      )
-      return
-    }
-
-    const rps = s.activeGame
-    renderRockPaperScissorsView(
-      s,
-      rps,
-      (thrown) => {
-        logger.debug({ roomId, thrown }, 'sending rps move')
-        send({
-          type: 'game_move',
-          roomId,
-          gameSessionId: rps.gameSessionId,
-          move: { game: 'rock_paper_scissors', throw: thrown },
-        })
-      },
-      {
-        offer: () => {
-          send({ type: 'rematch_offer', roomId, gameSessionId: rps.gameSessionId })
-        },
-        accept: () => {
-          send({ type: 'rematch_accept', roomId, gameSessionId: rps.gameSessionId })
-        },
-        decline: () => {
-          send({ type: 'rematch_decline', roomId, gameSessionId: rps.gameSessionId })
-        },
-        cancel: () => {
-          send({ type: 'rematch_cancel', roomId, gameSessionId: rps.gameSessionId })
-        },
-      },
-      () => {
-        send({ type: 'dismiss_completed_game', roomId })
-      },
-      () => {
-        send({ type: 'surrender', roomId, gameSessionId: rps.gameSessionId })
-      },
+    paintRegisteredTableGame({
+      snapshot: s,
+      state: s.activeGame,
+      roomId,
+      send,
       myPlayerId,
-      recapForSession
-    )
+      recapForSession,
+      logger,
+    })
   }
 
   function preGameWaiting(s: RoomSnapshot): TemplateResult {
@@ -494,37 +382,6 @@ export function mountGameSession(opts: {
       </button>
     `
 
-    const c4Art = html`
-      <div class="flex gap-0.5" aria-hidden="true">
-        ${[0, 1, 2, 3, 4, 5, 6].map(
-          () => html`
-            <div class="flex flex-col gap-0.5">
-              ${[0, 1, 2].map(
-                () =>
-                  html`<span
-                    class="block h-1.5 w-1.5 rounded-full bg-zinc-200 group-hover:bg-red-200/80"
-                  ></span>`
-              )}
-            </div>
-          `
-        )}
-      </div>
-    `
-    const tttArt = html`
-      <div class="grid grid-cols-3 gap-px rounded bg-zinc-300 p-px shadow-inner" aria-hidden="true">
-        ${['X', 'O', 'X', 'O', 'X', 'O', 'X', 'O', 'X'].map(
-          (m) =>
-            html`<span
-              class="${m === 'X'
-                ? 'text-red-600'
-                : 'text-blue-600'} flex h-3 w-3 items-center justify-center bg-white text-[7px] font-bold"
-              >${m}</span
-            >`
-        )}
-      </div>
-    `
-    const rpsArt = html`<span class="text-xl tracking-tight" aria-hidden="true">✊ ✋ ✌️</span>`
-
     return html`
       <div
         class="mx-auto flex w-full max-w-2xl flex-col gap-5 rounded-2xl border border-zinc-200/80 bg-linear-to-br from-white via-zinc-50/80 to-amber-50/30 p-6 shadow-md ring-1 ring-zinc-900/4"
@@ -556,30 +413,15 @@ export function mountGameSession(opts: {
                 role="group"
                 aria-label="Game choices"
               >
-                ${gameCard('connect4', {
-                  accent:
-                    'border-red-200/90 bg-gradient-to-br from-white to-red-50/50 hover:border-red-400 focus-visible:ring-red-400/80',
-                  icon: '⚫',
-                  title: 'Connect 4',
-                  blurb: 'Classic gravity drops — first four in a row wins.',
-                  art: c4Art,
-                })}
-                ${gameCard('tic_tac_toe', {
-                  accent:
-                    'border-sky-200/90 bg-gradient-to-br from-white to-sky-50/50 hover:border-sky-400 focus-visible:ring-sky-400/80',
-                  icon: '▦',
-                  title: 'Tic-tac-toe',
-                  blurb: 'Quick Xs and Os — three in a row on a tight board.',
-                  art: tttArt,
-                })}
-                ${gameCard('rock_paper_scissors', {
-                  accent:
-                    'border-emerald-200/90 bg-gradient-to-br from-white to-emerald-50/50 hover:border-emerald-400 focus-visible:ring-emerald-400/80',
-                  icon: '✦',
-                  title: 'Rock paper scissors',
-                  blurb: 'Hidden throws until both ready — race to the match.',
-                  art: rpsArt,
-                })}
+                ${TABLE_GAME_PICKER_CARDS.map((meta) =>
+                  gameCard(meta.kind, {
+                    accent: meta.accent,
+                    icon: meta.icon,
+                    title: meta.title,
+                    blurb: meta.blurb,
+                    art: meta.renderArt(),
+                  })
+                )}
               </div>
             `
           : html`
@@ -589,12 +431,13 @@ export function mountGameSession(opts: {
               >
                 <p class="text-sm font-medium text-zinc-700">Waiting for host</p>
                 <p class="mx-auto mt-2 max-w-xs text-xs leading-relaxed text-zinc-500">
-                  Three games are on the menu. The table host will start one in a moment.
+                  ${TABLE_GAME_PICKER_CARDS.length} games are on the menu. The table host will start
+                  one in a moment.
                 </p>
                 <div class="mt-5 flex justify-center gap-2 opacity-40" aria-hidden="true">
-                  <span class="h-10 w-14 rounded-lg bg-zinc-200"></span>
-                  <span class="h-10 w-14 rounded-lg bg-zinc-200"></span>
-                  <span class="h-10 w-14 rounded-lg bg-zinc-200"></span>
+                  ${TABLE_GAME_PICKER_CARDS.map(
+                    () => html`<span class="h-10 w-14 rounded-lg bg-zinc-200"></span>`
+                  )}
                 </div>
               </div>
             `}
