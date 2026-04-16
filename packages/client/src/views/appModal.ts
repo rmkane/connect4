@@ -8,6 +8,10 @@ export const APP_MODAL_PANEL_CLASS =
 export const APP_MODAL_PANEL_WIDE_CLASS =
   'fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[min(calc(100vw-2rem),36rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-5 text-zinc-900 shadow-2xl backdrop:bg-zinc-950/40'
 
+/** Stacks above `z-50` dialogs (e.g. game recap) for time-sensitive prompts. */
+export const APP_MODAL_TOP_LAYER_PANEL_CLASS =
+  'fixed left-1/2 top-1/2 z-[60] max-h-[85vh] w-[min(calc(100vw-2rem),26rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-5 text-zinc-900 shadow-2xl backdrop:bg-zinc-950/50'
+
 export function openModalById(id: string): void {
   document.getElementById(id)?.showModal()
 }

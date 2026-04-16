@@ -12,6 +12,7 @@ import type {
   GameMetricsSummary,
   GameMove,
   GamePlayerMetricRow,
+  PendingRematch,
   PlayerId,
   PlayerInfo,
   RoomSeatsTuple,
@@ -55,6 +56,7 @@ export class PlayerRoom {
   sockets: Map<TableSeatIndex, WebSocket> = new Map()
   private chatHistory: ChatMessagePayload[] = []
   private gameMetrics: ActiveGameMetrics | null = null
+  private pendingRematch: PendingRematch | null = null
   private readonly log: Logger
 
   constructor(public readonly roomId: string) {
@@ -81,6 +83,7 @@ export class PlayerRoom {
       activeGame: this.activeGame
         ? (JSON.parse(JSON.stringify(this.activeGame)) as AnyGameState)
         : null,
+      pendingRematch: this.pendingRematch ? { ...this.pendingRematch } : null,
     }
   }
 
@@ -403,6 +406,7 @@ export class PlayerRoom {
     if (seated < engine.minPlayers || seated > engine.maxPlayers) return false
     if (engine.maxPlayers > ROOM_TABLE_CAPACITY) return false
 
+    this.pendingRematch = null
     const gameSessionId = randomUUID()
     this.games.push({ gameSessionId, kind, status: 'in_progress' })
 
@@ -451,8 +455,60 @@ export class PlayerRoom {
     }
   }
 
-  /** Another round of the same active game after it completed; both seats and sockets required. */
-  startNewRound(gameSessionId: string): boolean {
+  /** Seated player asks the opponent to play another round (same `gameSessionId`). */
+  offerRematch(playerId: PlayerId, gameSessionId: string): boolean {
+    if (!this.isSeatedPlayer(playerId)) return false
+    const g = this.activeGame
+    if (!g || g.gameSessionId !== gameSessionId || g.status !== 'completed') return false
+    if (this.pendingRematch) {
+      if (
+        this.pendingRematch.gameSessionId === gameSessionId &&
+        this.pendingRematch.requesterId === playerId
+      ) {
+        return true
+      }
+      return false
+    }
+    this.pendingRematch = { gameSessionId, requesterId: playerId, offeredAt: Date.now() }
+    this.pushRoomSystemChat(`${this.displayNameFor(playerId)} wants to play again.`)
+    this.broadcast()
+    return true
+  }
+
+  /** Opponent agrees; starts the next round if both players are still connected. */
+  acceptRematch(playerId: PlayerId, gameSessionId: string): boolean {
+    const p = this.pendingRematch
+    if (!p || p.gameSessionId !== gameSessionId) return false
+    if (playerId === p.requesterId) return false
+    if (!this.isSeatedPlayer(playerId)) return false
+    return this.executeRematchRound(gameSessionId)
+  }
+
+  /** Opponent turns down the pending rematch. */
+  declineRematch(playerId: PlayerId, gameSessionId: string): boolean {
+    const p = this.pendingRematch
+    if (!p || p.gameSessionId !== gameSessionId) return false
+    if (playerId === p.requesterId) return false
+    if (!this.isSeatedPlayer(playerId)) return false
+    this.pendingRematch = null
+    this.pushRoomSystemChat(`${this.displayNameFor(playerId)} declined a rematch.`)
+    this.broadcast()
+    return true
+  }
+
+  /** Requester cancels before the opponent responds. */
+  cancelRematchOffer(playerId: PlayerId, gameSessionId: string): boolean {
+    const p = this.pendingRematch
+    if (!p || p.gameSessionId !== gameSessionId || p.requesterId !== playerId) return false
+    if (!this.isSeatedPlayer(playerId)) return false
+    this.pendingRematch = null
+    this.pushRoomSystemChat(`${this.displayNameFor(playerId)} withdrew the rematch request.`)
+    this.broadcast()
+    return true
+  }
+
+  /** Starts the next round after `acceptRematch`; clears `pendingRematch` on success. */
+  private executeRematchRound(gameSessionId: string): boolean {
     const g = this.activeGame
     if (!g || g.gameSessionId !== gameSessionId) return false
     if (g.status !== 'completed') return false
@@ -460,6 +516,8 @@ export class PlayerRoom {
     const engine = getEngineForActiveState(g)
     if (this.seatedCount() < engine.maxPlayers) return false
     if (!this.allEnginePlayersConnected(engine)) return false
+
+    this.pendingRematch = null
 
     const nextPlayers = this.shuffledRoster()
 
@@ -500,6 +558,7 @@ export class PlayerRoom {
     if (!this.activeGame || this.activeGame.status !== 'completed') return false
     if (!this.isSeatedPlayer(playerId)) return false
 
+    this.pendingRematch = null
     this.activeGame = null
     this.gameMetrics = null
     this.log.info({ playerId }, 'completed game dismissed')
@@ -511,6 +570,8 @@ export class PlayerRoom {
     const leaving = this.seats[seat]
     const leavingId = leaving?.id ?? null
     const prevLeaderId = this.leaderId
+
+    this.pendingRematch = null
 
     this.sockets.delete(seat)
     this.seats[seat] = null

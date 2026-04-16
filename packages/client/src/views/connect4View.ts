@@ -10,6 +10,7 @@ import {
   matchScoreFor,
   pieceCellClass,
 } from '@/views/playerLabels.js'
+import type { RematchControls } from '@/views/rematchControls.js'
 
 const C4_RULES_DIALOG_ID = 'c4-rules-dialog'
 const C4_SURRENDER_DIALOG_ID = 'c4-surrender-dialog'
@@ -179,7 +180,7 @@ function boardTemplate(
   snapshot: RoomSnapshot,
   state: Connect4State,
   onDrop: (col: number) => void,
-  onPlayAgain: () => void,
+  rematch: RematchControls,
   onChooseAnotherGame: () => void,
   onSurrender: () => void,
   myPlayerId: PlayerId | null,
@@ -194,6 +195,25 @@ function boardTemplate(
   const showDropRow = state.status === 'in_progress'
   const cols = state.board[0].length
   const [p0, p1] = state.players
+
+  const pr = snapshot.pendingRematch
+  const rematchForThisGame = pr !== null && pr.gameSessionId === state.gameSessionId
+  const imRematchRequester = Boolean(
+    rematchForThisGame && myPlayerId !== null && pr!.requesterId === myPlayerId
+  )
+  const imRematchOpponent = Boolean(
+    rematchForThisGame && myPlayerId !== null && pr!.requesterId !== myPlayerId
+  )
+
+  const newGameBtn = html`
+    <button
+      type="button"
+      class="rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50 sm:text-sm"
+      @click=${onChooseAnotherGame}
+    >
+      New game
+    </button>
+  `
 
   const dropRow = showDropRow
     ? Array.from({ length: cols }, (_, c) => {
@@ -291,22 +311,48 @@ function boardTemplate(
             `
           : nothing}
         ${showCompletedActions
-          ? html`
-              <button
-                type="button"
-                class="rounded-md bg-red-700 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-red-800 sm:text-sm"
-                @click=${onPlayAgain}
-              >
-                Play again
-              </button>
-              <button
-                type="button"
-                class="rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50 sm:text-sm"
-                @click=${onChooseAnotherGame}
-              >
-                New game
-              </button>
-            `
+          ? imRematchRequester
+            ? html`
+                <span class="text-center text-xs text-zinc-600"
+                  >Waiting for opponent to accept…</span
+                >
+                <button
+                  type="button"
+                  class="rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50 sm:text-sm"
+                  @click=${() => rematch.cancel()}
+                >
+                  Cancel request
+                </button>
+                ${newGameBtn}
+              `
+            : imRematchOpponent
+              ? html`
+                  <button
+                    type="button"
+                    class="rounded-md bg-red-700 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-red-800 sm:text-sm"
+                    @click=${() => rematch.accept()}
+                  >
+                    Accept rematch
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50 sm:text-sm"
+                    @click=${() => rematch.decline()}
+                  >
+                    Decline
+                  </button>
+                  ${newGameBtn}
+                `
+              : html`
+                  <button
+                    type="button"
+                    class="rounded-md bg-red-700 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-red-800 sm:text-sm"
+                    @click=${() => rematch.offer()}
+                  >
+                    Play again
+                  </button>
+                  ${newGameBtn}
+                `
           : nothing}
       </div>
 
@@ -346,7 +392,7 @@ export function renderConnect4View(
   snapshot: RoomSnapshot,
   state: Connect4State,
   onDrop: (col: number) => void,
-  onPlayAgain: () => void,
+  rematch: RematchControls,
   onChooseAnotherGame: () => void,
   onSurrender: () => void,
   myPlayerId: PlayerId | null,
@@ -360,7 +406,7 @@ export function renderConnect4View(
       snapshot,
       state,
       onDrop,
-      onPlayAgain,
+      rematch,
       onChooseAnotherGame,
       onSurrender,
       myPlayerId,

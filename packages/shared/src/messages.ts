@@ -13,7 +13,12 @@ export type ClientMessage =
   | { type: 'join_room'; roomId: string; displayName: string }
   | { type: 'create_game'; roomId: string; kind: GameKind }
   | { type: 'game_move'; roomId: string; gameSessionId: string; move: GameMove }
-  | { type: 'new_round'; roomId: string; gameSessionId: string }
+  /** After a completed game — asks the opponent to agree to another round (same session id). */
+  | { type: 'rematch_offer'; roomId: string; gameSessionId: string }
+  | { type: 'rematch_accept'; roomId: string; gameSessionId: string }
+  | { type: 'rematch_decline'; roomId: string; gameSessionId: string }
+  /** Requester withdraws before the opponent responds. */
+  | { type: 'rematch_cancel'; roomId: string; gameSessionId: string }
   | { type: 'surrender'; roomId: string; gameSessionId: string }
   /** After a finished game, return to the “choose a game” screen (either player may send). */
   | { type: 'dismiss_completed_game'; roomId: string }

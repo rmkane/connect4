@@ -183,19 +183,74 @@ wss.on('connection', (ws) => {
     }
 
     if (
-      msg.type === 'new_round' &&
+      msg.type === 'rematch_offer' &&
       assignedRoomId &&
       assignedPlayerId &&
       msg.roomId === assignedRoomId
     ) {
       const room = manager.get(assignedRoomId)
-      if (room && !room.startNewRound(msg.gameSessionId)) {
-        connLog.debug({ roomId: assignedRoomId }, 'new_round rejected')
+      if (room && !room.offerRematch(assignedPlayerId, msg.gameSessionId)) {
+        connLog.debug({ roomId: assignedRoomId }, 'rematch_offer rejected')
         ws.send(
           JSON.stringify({
             type: 'error',
             message:
-              'Play again is only available after a finished game, with both players still connected.',
+              'Rematch can only be requested after this game has finished, and not while your opponent already has a pending request.',
+          })
+        )
+      }
+    }
+
+    if (
+      msg.type === 'rematch_accept' &&
+      assignedRoomId &&
+      assignedPlayerId &&
+      msg.roomId === assignedRoomId
+    ) {
+      const room = manager.get(assignedRoomId)
+      if (room && !room.acceptRematch(assignedPlayerId, msg.gameSessionId)) {
+        connLog.debug({ roomId: assignedRoomId }, 'rematch_accept rejected')
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            message:
+              'Accept is only available when your opponent has asked to play again and both players are still connected.',
+          })
+        )
+      }
+    }
+
+    if (
+      msg.type === 'rematch_decline' &&
+      assignedRoomId &&
+      assignedPlayerId &&
+      msg.roomId === assignedRoomId
+    ) {
+      const room = manager.get(assignedRoomId)
+      if (room && !room.declineRematch(assignedPlayerId, msg.gameSessionId)) {
+        connLog.debug({ roomId: assignedRoomId }, 'rematch_decline rejected')
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            message: 'You can only decline when the other player has a pending rematch request.',
+          })
+        )
+      }
+    }
+
+    if (
+      msg.type === 'rematch_cancel' &&
+      assignedRoomId &&
+      assignedPlayerId &&
+      msg.roomId === assignedRoomId
+    ) {
+      const room = manager.get(assignedRoomId)
+      if (room && !room.cancelRematchOffer(assignedPlayerId, msg.gameSessionId)) {
+        connLog.debug({ roomId: assignedRoomId }, 'rematch_cancel rejected')
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            message: 'You can only cancel your own rematch request.',
           })
         )
       }

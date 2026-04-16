@@ -13,6 +13,14 @@ export interface GameListing {
 
 export type AnyGameState = Connect4State | TicTacToeState
 
+/** Waiting for the other seated player to accept a rematch for this session. */
+export interface PendingRematch {
+  gameSessionId: string
+  requesterId: PlayerId
+  /** Changes on each new offer so the client can show a fresh prompt (e.g. after cancel + re-offer). */
+  offeredAt: number
+}
+
 export interface RoomSnapshot {
   roomId: string
   /** Custom label for the table; empty means “use room id” in UI. */
@@ -31,6 +39,8 @@ export interface RoomSnapshot {
   matchScores: Record<PlayerId, number>
   games: GameListing[]
   activeGame: AnyGameState | null
+  /** `null` when no one has asked to play again since the last completed round. */
+  pendingRematch: PendingRematch | null
 }
 
 /** Lobby row from `GET /api/rooms` (waiting with a free seat, or full table). */

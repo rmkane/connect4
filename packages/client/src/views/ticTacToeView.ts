@@ -5,6 +5,7 @@ import { roomTableIsFull } from '@gameroom/shared'
 
 import { confirmModal, infoModal, modalOpenButton, openModalById } from '@/views/appModal.js'
 import { displayNameFor, markForPlayer, matchScoreFor } from '@/views/playerLabels.js'
+import type { RematchControls } from '@/views/rematchControls.js'
 
 const TTT_RULES_DIALOG_ID = 'ttt-rules-dialog'
 const TTT_SURRENDER_DIALOG_ID = 'ttt-surrender-dialog'
@@ -149,7 +150,7 @@ function boardTemplate(
   snapshot: RoomSnapshot,
   state: TicTacToeState,
   onCell: (row: number, col: number) => void,
-  onPlayAgain: () => void,
+  rematch: RematchControls,
   onChooseAnotherGame: () => void,
   onSurrender: () => void,
   myPlayerId: PlayerId | null,
@@ -161,6 +162,25 @@ function boardTemplate(
     state.status === 'completed' && recap !== null && recap.show && roomTableIsFull(snapshot.seats)
   const showSurrender = state.status === 'in_progress' && myPlayerId !== null
   const [xId, oId] = state.players
+
+  const pr = snapshot.pendingRematch
+  const rematchForThisGame = pr !== null && pr.gameSessionId === state.gameSessionId
+  const imRematchRequester = Boolean(
+    rematchForThisGame && myPlayerId !== null && pr!.requesterId === myPlayerId
+  )
+  const imRematchOpponent = Boolean(
+    rematchForThisGame && myPlayerId !== null && pr!.requesterId !== myPlayerId
+  )
+
+  const newGameBtn = html`
+    <button
+      type="button"
+      class="rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50 sm:text-sm"
+      @click=${onChooseAnotherGame}
+    >
+      New game
+    </button>
+  `
 
   const rows = state.board.map((row, ri) =>
     row.map((cell, ci) => {
@@ -259,22 +279,48 @@ function boardTemplate(
             `
           : nothing}
         ${showCompletedActions
-          ? html`
-              <button
-                type="button"
-                class="rounded-md bg-red-700 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-red-800 sm:text-sm"
-                @click=${onPlayAgain}
-              >
-                Play again
-              </button>
-              <button
-                type="button"
-                class="rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50 sm:text-sm"
-                @click=${onChooseAnotherGame}
-              >
-                New game
-              </button>
-            `
+          ? imRematchRequester
+            ? html`
+                <span class="text-center text-xs text-zinc-600"
+                  >Waiting for opponent to accept…</span
+                >
+                <button
+                  type="button"
+                  class="rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50 sm:text-sm"
+                  @click=${() => rematch.cancel()}
+                >
+                  Cancel request
+                </button>
+                ${newGameBtn}
+              `
+            : imRematchOpponent
+              ? html`
+                  <button
+                    type="button"
+                    class="rounded-md bg-red-700 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-red-800 sm:text-sm"
+                    @click=${() => rematch.accept()}
+                  >
+                    Accept rematch
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50 sm:text-sm"
+                    @click=${() => rematch.decline()}
+                  >
+                    Decline
+                  </button>
+                  ${newGameBtn}
+                `
+              : html`
+                  <button
+                    type="button"
+                    class="rounded-md bg-red-700 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-red-800 sm:text-sm"
+                    @click=${() => rematch.offer()}
+                  >
+                    Play again
+                  </button>
+                  ${newGameBtn}
+                `
           : nothing}
       </div>
 
@@ -314,7 +360,7 @@ export function renderTicTacToeView(
   snapshot: RoomSnapshot,
   state: TicTacToeState,
   onCell: (row: number, col: number) => void,
-  onPlayAgain: () => void,
+  rematch: RematchControls,
   onChooseAnotherGame: () => void,
   onSurrender: () => void,
   myPlayerId: PlayerId | null,
@@ -328,7 +374,7 @@ export function renderTicTacToeView(
       snapshot,
       state,
       onCell,
-      onPlayAgain,
+      rematch,
       onChooseAnotherGame,
       onSurrender,
       myPlayerId,

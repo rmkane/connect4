@@ -7,6 +7,7 @@ import type {
   ClientMessage,
   GameKind,
   GameMetricsSummary,
+  PendingRematch,
   PlayerId,
   RoomSnapshot,
   ServerMessage,
@@ -24,9 +25,10 @@ import { clientConfig } from '@/config.js'
 import { logger } from '@/logger.js'
 import { navigateHome } from '@/router.js'
 import { clearSessionContext, paintRoomSessionChrome } from '@/sessionContext.js'
-import { alertModal, openModalById } from '@/views/appModal.js'
+import { alertModal, closeModalById, openModalById } from '@/views/appModal.js'
 import { renderConnect4View } from '@/views/connect4View.js'
 import { gameSummaryDialog } from '@/views/gameSummaryDialog.js'
+import { rematchOfferDialog } from '@/views/rematchOfferDialog.js'
 import { renderTicTacToeView } from '@/views/ticTacToeView.js'
 
 const ROOM_CHAT_LOG_ID = 'gameroom-room-chat-log'
@@ -34,6 +36,7 @@ const ROOM_DISPLAY_NAME_MAX = 64
 const SESSION_ERR_DLG_ID = 'gs-session-err-dlg'
 const SESSION_JOIN_NAME_DLG_ID = 'gs-join-name-dlg'
 const GAME_SUMMARY_DLG_ID = 'gs-game-summary-dlg'
+const REMATCH_OFFER_DLG_ID = 'gs-rematch-offer-dlg'
 
 export type GameSessionHandle = { destroy: () => void }
 
@@ -87,6 +90,37 @@ export function mountGameSession(opts: {
   let joinNameError: string | null = null
   /** Latest finished game on this socket; kept after closing the recap dialog until stale or leave. */
   let lastGameSummary: GameMetricsSummary | null = null
+  /** Last rematch prompt we auto-opened (`session:requester:offeredAt`); avoids reopening on every `room_state`. */
+  let lastRematchOfferPromptKey: string | null = null
+
+  function rematchOfferForOpponent(snapshot: RoomSnapshot): PendingRematch | null {
+    if (!myPlayerId) return null
+    const pr = snapshot.pendingRematch
+    const ag = snapshot.activeGame
+    if (!pr || pr.requesterId === myPlayerId) return null
+    if (!ag || ag.status !== 'completed' || ag.gameSessionId !== pr.gameSessionId) return null
+    return pr
+  }
+
+  function syncRematchOfferDialog(snapshot: RoomSnapshot) {
+    if (phase !== 'play') {
+      lastRematchOfferPromptKey = null
+      closeModalById(REMATCH_OFFER_DLG_ID)
+      return
+    }
+    const offer = rematchOfferForOpponent(snapshot)
+    if (!offer) {
+      lastRematchOfferPromptKey = null
+      closeModalById(REMATCH_OFFER_DLG_ID)
+      return
+    }
+    const key = `${offer.gameSessionId}:${offer.requesterId}:${offer.offeredAt}`
+    if (key !== lastRematchOfferPromptKey) {
+      lastRematchOfferPromptKey = key
+      paint()
+      queueMicrotask(() => openModalById(REMATCH_OFFER_DLG_ID))
+    }
+  }
 
   function openGameRecap() {
     queueMicrotask(() => openModalById(GAME_SUMMARY_DLG_ID))
@@ -98,6 +132,7 @@ export function mountGameSession(opts: {
     const ag = snapshot.activeGame
     if (ag && ag.gameSessionId !== lastGameSummary.gameSessionId) {
       lastGameSummary = null
+      closeModalById(GAME_SUMMARY_DLG_ID)
       return
     }
     if (
@@ -107,6 +142,7 @@ export function mountGameSession(opts: {
       boardIsUnstarted(ag)
     ) {
       lastGameSummary = null
+      closeModalById(GAME_SUMMARY_DLG_ID)
     }
   }
 
@@ -264,9 +300,20 @@ export function mountGameSession(opts: {
             move: { game: 'connect4', column },
           })
         },
-        () => {
-          logger.debug({ roomId }, 'sending new_round')
-          send({ type: 'new_round', roomId, gameSessionId: game.gameSessionId })
+        {
+          offer: () => {
+            logger.debug({ roomId }, 'rematch_offer')
+            send({ type: 'rematch_offer', roomId, gameSessionId: game.gameSessionId })
+          },
+          accept: () => {
+            send({ type: 'rematch_accept', roomId, gameSessionId: game.gameSessionId })
+          },
+          decline: () => {
+            send({ type: 'rematch_decline', roomId, gameSessionId: game.gameSessionId })
+          },
+          cancel: () => {
+            send({ type: 'rematch_cancel', roomId, gameSessionId: game.gameSessionId })
+          },
         },
         () => {
           logger.debug({ roomId }, 'dismiss_completed_game')
@@ -295,8 +342,19 @@ export function mountGameSession(opts: {
           move: { game: 'tic_tac_toe', row, col },
         })
       },
-      () => {
-        send({ type: 'new_round', roomId, gameSessionId: ttt.gameSessionId })
+      {
+        offer: () => {
+          send({ type: 'rematch_offer', roomId, gameSessionId: ttt.gameSessionId })
+        },
+        accept: () => {
+          send({ type: 'rematch_accept', roomId, gameSessionId: ttt.gameSessionId })
+        },
+        decline: () => {
+          send({ type: 'rematch_decline', roomId, gameSessionId: ttt.gameSessionId })
+        },
+        cancel: () => {
+          send({ type: 'rematch_cancel', roomId, gameSessionId: ttt.gameSessionId })
+        },
       },
       () => {
         send({ type: 'dismiss_completed_game', roomId })
@@ -475,6 +533,7 @@ export function mountGameSession(opts: {
         leaderIdHint = msg.snapshot.leaderId
         titleDraft = msg.snapshot.roomTitle
         clearStaleGameSummary(msg.snapshot)
+        syncRematchOfferDialog(msg.snapshot)
         if (phase === 'play') paintBoardArea()
         if (phase === 'play') paintSessionChrome()
       }
@@ -599,6 +658,23 @@ export function mountGameSession(opts: {
         ${phase === 'play' && lastGameSummary
           ? gameSummaryDialog(GAME_SUMMARY_DLG_ID, lastGameSummary)
           : nothing}
+        ${phase === 'play' && lastSnapshot && rematchOfferForOpponent(lastSnapshot)
+          ? rematchOfferDialog(
+              REMATCH_OFFER_DLG_ID,
+              lastSnapshot,
+              rematchOfferForOpponent(lastSnapshot)!,
+              {
+                onAccept: () => {
+                  const pr = lastSnapshot!.pendingRematch!
+                  send({ type: 'rematch_accept', roomId, gameSessionId: pr.gameSessionId })
+                },
+                onDecline: () => {
+                  const pr = lastSnapshot!.pendingRematch!
+                  send({ type: 'rematch_decline', roomId, gameSessionId: pr.gameSessionId })
+                },
+              }
+            )
+          : nothing}
       </div>
     `
   }
@@ -663,6 +739,8 @@ export function mountGameSession(opts: {
     serverErrorMessage = null
     joinNameError = null
     lastGameSummary = null
+    lastRematchOfferPromptKey = null
+    closeModalById(REMATCH_OFFER_DLG_ID)
     clearSessionContext()
     render(nothing, roomChatMount)
     render(nothing, host)
