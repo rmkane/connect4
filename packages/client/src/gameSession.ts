@@ -9,7 +9,7 @@ import type {
   RoomSnapshot,
   ServerMessage,
 } from '@gameroom/shared'
-import { CHAT_MAX_TEXT_LENGTH } from '@gameroom/shared'
+import { CHAT_MAX_TEXT_LENGTH, SYSTEM_ANNOUNCEMENT_PLAYER_ID } from '@gameroom/shared'
 
 import { clientConfig } from '@/config.js'
 import { logger } from '@/logger.js'
@@ -32,6 +32,19 @@ function canUseWebShare(): boolean {
   return typeof navigator !== 'undefined' && typeof navigator.share === 'function'
 }
 
+function otherSeatedPlayer(
+  s: RoomSnapshot,
+  myId: PlayerId
+): { id: PlayerId; displayName: string } | null {
+  if (s.seats.red?.id === myId && s.seats.yellow) {
+    return { id: s.seats.yellow.id, displayName: s.seats.yellow.displayName }
+  }
+  if (s.seats.yellow?.id === myId && s.seats.red) {
+    return { id: s.seats.red.id, displayName: s.seats.red.displayName }
+  }
+  return null
+}
+
 export function mountGameSession(opts: {
   host: HTMLElement
   roomId: string
@@ -42,11 +55,14 @@ export function mountGameSession(opts: {
   let displayName = ''
   let phase: 'name' | 'play' = 'name'
   let lastSnapshot: RoomSnapshot | null = null
+  /** Until the first `room_state`, host comes from `joined_room`. */
+  let leaderIdHint: PlayerId | null = null
   let myPlayerId: PlayerId | null = null
   let roomChatMessages: ChatMessagePayload[] = []
   let roomChatDraft = ''
   let inviteFeedback: '' | 'copied' | 'failed' = ''
   let inviteFeedbackTimer: ReturnType<typeof setTimeout> | null = null
+  let titleDraft = ''
 
   function send(msg: ClientMessage) {
     ws?.send(JSON.stringify(msg))
@@ -83,19 +99,33 @@ export function mountGameSession(opts: {
           >
             ${roomChatMessages.length === 0
               ? html`<p class="py-2 text-xs text-zinc-500">No messages yet.</p>`
-              : roomChatMessages.map(
-                  (m) => html`
-                    <p class="border-b border-zinc-100 py-1 last:border-0">
-                      <span class="text-xs text-zinc-400">${formatChatTime(m.sentAt)}</span>
-                      <span
-                        class="${m.senderId === myPlayerId
-                          ? 'font-semibold text-red-800'
-                          : 'font-medium text-zinc-800'}"
-                        >${m.displayName}</span
-                      >:
-                      <span class="text-zinc-700">${m.text}</span>
-                    </p>
-                  `
+              : roomChatMessages.map((m) =>
+                  m.system === true || m.senderId === SYSTEM_ANNOUNCEMENT_PLAYER_ID
+                    ? html`
+                        <p
+                          class="border-b border-zinc-100 bg-zinc-100/60 py-1.5 pl-1 last:border-0"
+                          role="status"
+                        >
+                          <span class="text-xs text-zinc-400">${formatChatTime(m.sentAt)}</span>
+                          <span
+                            class="ml-1 text-xs font-semibold tracking-wide text-zinc-500 uppercase"
+                            >Room</span
+                          >
+                          <span class="ml-1 text-zinc-700">${m.text}</span>
+                        </p>
+                      `
+                    : html`
+                        <p class="border-b border-zinc-100 py-1 last:border-0">
+                          <span class="text-xs text-zinc-400">${formatChatTime(m.sentAt)}</span>
+                          <span
+                            class="${m.senderId === myPlayerId
+                              ? 'font-semibold text-red-800'
+                              : 'font-medium text-zinc-800'}"
+                            >${m.displayName}</span
+                          >:
+                          <span class="text-zinc-700">${m.text}</span>
+                        </p>
+                      `
                 )}
           </div>
           <div class="mt-2 flex gap-2">
@@ -150,7 +180,8 @@ export function mountGameSession(opts: {
     }
 
     if (!s.activeGame) {
-      render(gamePicker(), el)
+      const isTableHost = Boolean(myPlayerId && s.leaderId === myPlayerId)
+      render(gamePicker(isTableHost), el)
       return
     }
 
@@ -236,7 +267,7 @@ export function mountGameSession(opts: {
     `
   }
 
-  function gamePicker(): TemplateResult {
+  function gamePicker(isTableHost: boolean): TemplateResult {
     function pick(kind: GameKind) {
       logger.info({ roomId, kind }, 'create_game')
       send({ type: 'create_game', roomId, kind })
@@ -248,26 +279,34 @@ export function mountGameSession(opts: {
         aria-labelledby="pick-game-heading"
       >
         <h2 id="pick-game-heading" class="text-lg font-semibold text-zinc-900">Choose a game</h2>
-        <p class="text-sm text-zinc-600">
-          Both players are here. Pick what to play — you can start a different title after a round
-          ends.
-        </p>
-        <div class="flex flex-col gap-2 sm:flex-row">
-          <button
-            type="button"
-            class="flex-1 rounded-lg bg-red-700 px-4 py-3 text-sm font-semibold text-white shadow transition hover:bg-red-800"
-            @click=${() => pick('connect4')}
-          >
-            Connect 4
-          </button>
-          <button
-            type="button"
-            class="flex-1 rounded-lg border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-100"
-            @click=${() => pick('tic_tac_toe')}
-          >
-            Tic-tac-toe
-          </button>
-        </div>
+        ${isTableHost
+          ? html`
+              <p class="text-sm text-zinc-600">
+                Both players are here. As table host, pick what to play — you can choose a different
+                title after a round ends.
+              </p>
+              <div class="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  class="flex-1 rounded-lg bg-red-700 px-4 py-3 text-sm font-semibold text-white shadow transition hover:bg-red-800"
+                  @click=${() => pick('connect4')}
+                >
+                  Connect 4
+                </button>
+                <button
+                  type="button"
+                  class="flex-1 rounded-lg border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-100"
+                  @click=${() => pick('tic_tac_toe')}
+                >
+                  Tic-tac-toe
+                </button>
+              </div>
+            `
+          : html`
+              <p class="text-sm text-zinc-600">
+                Both players are here. Waiting for the table host to start a game.
+              </p>
+            `}
       </div>
     `
   }
@@ -345,14 +384,19 @@ export function mountGameSession(opts: {
       logger.debug({ type: msg.type }, 'server message')
       if (msg.type === 'joined_room') {
         myPlayerId = msg.playerId
+        leaderIdHint = msg.leaderId
         logger.info({ playerId: msg.playerId, seat: msg.seat }, 'assigned player id')
         if (phase === 'play' && lastSnapshot) paintBoardArea()
         if (phase === 'play') paintRoomChat()
+        if (phase === 'play') paintSessionChrome()
       }
       if (msg.type === 'room_state') {
         lastSnapshot = msg.snapshot
+        leaderIdHint = msg.snapshot.leaderId
+        titleDraft = msg.snapshot.roomTitle
         if (phase === 'play') paintBoardArea()
         if (phase === 'play') paintRoomChat()
+        if (phase === 'play') paintSessionChrome()
       }
       if (msg.type === 'chat_history' && msg.scope === 'room' && msg.roomId === roomId) {
         roomChatMessages = msg.messages.slice(-100)
@@ -368,6 +412,7 @@ export function mountGameSession(opts: {
             displayName: msg.displayName,
             text: msg.text,
             sentAt: msg.sentAt,
+            ...(msg.system === true ? { system: true as const } : {}),
           },
         ]
         if (phase === 'play') paintRoomChat()
@@ -438,11 +483,31 @@ export function mountGameSession(opts: {
       return
     }
     const shareUrl = `${location.origin}/room/${roomId}`
+    const roomTitle = lastSnapshot?.roomTitle ?? ''
+    const leaderId = lastSnapshot?.leaderId ?? leaderIdHint
+    const isTableHost = Boolean(myPlayerId && leaderId === myPlayerId)
+    const passHostTarget =
+      isTableHost && lastSnapshot && myPlayerId ? otherSeatedPlayer(lastSnapshot, myPlayerId) : null
     paintRoomSessionChrome({
       displayName,
       roomId,
+      roomTitle,
+      titleDraft,
+      isTableHost,
+      passHostTarget,
+      onPassHost: () => {
+        if (!passHostTarget) return
+        send({ type: 'transfer_leadership', roomId, newLeaderId: passHostTarget.id })
+      },
       shareUrl,
       inviteFeedback,
+      onTitleInput: (v) => {
+        titleDraft = v
+        paintSessionChrome()
+      },
+      onSaveTitle: () => {
+        send({ type: 'set_room_title', roomId, title: titleDraft })
+      },
       onLeave: () => {
         ws?.close()
         navigateHome()
@@ -465,8 +530,10 @@ export function mountGameSession(opts: {
     ws?.close()
     ws = null
     myPlayerId = null
+    leaderIdHint = null
     roomChatMessages = []
     roomChatDraft = ''
+    titleDraft = ''
     clearSessionContext()
     render(nothing, roomChatMount)
     render(nothing, host)

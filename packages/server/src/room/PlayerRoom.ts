@@ -15,12 +15,21 @@ import type {
   RoomSnapshot,
   ServerMessage,
 } from '@gameroom/shared'
-import { CHAT_HISTORY_LIMIT, sanitizeChatText } from '@gameroom/shared'
+import {
+  CHAT_HISTORY_LIMIT,
+  SYSTEM_ANNOUNCEMENT_PLAYER_ID,
+  sanitizeChatText,
+  sanitizeRoomTitle,
+} from '@gameroom/shared'
 
 import { getEngine, getEngineForActiveState } from '@/game/gameEngines.js'
 import { logger } from '@/logger.js'
 
 export class PlayerRoom {
+  /** Custom table label (empty = clients show room id). */
+  roomTitle = ''
+  /** First joiner is host; reassigned when the host leaves or passes host. */
+  leaderId: PlayerId | null = null
   seats: { red: PlayerInfo | null; yellow: PlayerInfo | null } = {
     red: null,
     yellow: null,
@@ -47,6 +56,8 @@ export class PlayerRoom {
   getSnapshot(): RoomSnapshot {
     return {
       roomId: this.roomId,
+      roomTitle: this.roomTitle,
+      leaderId: this.leaderId,
       seats: { red: this.seats.red, yellow: this.seats.yellow },
       matchScores: this.snapshotScores(),
       games: this.games.map((g) => ({ ...g })),
@@ -64,11 +75,98 @@ export class PlayerRoom {
     this.sockets.forEach((ws) => ws.readyState === WebSocket.OPEN && ws.send(payload))
   }
 
-  private pushRoomChat(msg: ChatMessagePayload) {
+  private appendRoomChatHistory(msg: ChatMessagePayload) {
     this.chatHistory.push(msg)
     if (this.chatHistory.length > CHAT_HISTORY_LIMIT) {
       this.chatHistory.splice(0, this.chatHistory.length - CHAT_HISTORY_LIMIT)
     }
+  }
+
+  private broadcastRoomChatLine(msg: ChatMessagePayload) {
+    const payload = JSON.stringify({ type: 'chat_message', ...msg } satisfies ServerMessage)
+    this.sockets.forEach((ws) => ws.readyState === WebSocket.OPEN && ws.send(payload))
+  }
+
+  /** Table host may rename the table (empty title clears the custom label). */
+  setRoomTitle(playerId: PlayerId, rawTitle: string): boolean {
+    if (!this.isSeatedPlayer(playerId)) return false
+    if (playerId !== this.leaderId) return false
+    this.roomTitle = sanitizeRoomTitle(rawTitle)
+    this.broadcast()
+    return true
+  }
+
+  /** Current host only — `newLeaderId` must be the other seated player. */
+  transferLeadership(fromPlayerId: PlayerId, newLeaderId: PlayerId): boolean {
+    if (fromPlayerId !== this.leaderId) return false
+    if (!this.isSeatedPlayer(newLeaderId) || newLeaderId === fromPlayerId) return false
+    const fromName = this.displayNameFor(fromPlayerId)
+    const toName = this.displayNameFor(newLeaderId)
+    this.leaderId = newLeaderId
+    this.pushRoomSystemChat(`${fromName} passed table host to ${toName}.`)
+    this.broadcast()
+    return true
+  }
+
+  private displayNameFor(playerId: PlayerId): string {
+    if (this.seats.red?.id === playerId) return this.seats.red.displayName
+    if (this.seats.yellow?.id === playerId) return this.seats.yellow.displayName
+    return 'Player'
+  }
+
+  private gameLabel(game: AnyGameState['game']): string {
+    return game === 'connect4' ? 'Connect 4' : 'Tic-tac-toe'
+  }
+
+  private announceGameStarted(): void {
+    const g = this.activeGame
+    if (!g || g.status !== 'in_progress') return
+    const opener = this.displayNameFor(g.currentTurn)
+    const label = this.gameLabel(g.game)
+    const text =
+      g.game === 'tic_tac_toe'
+        ? `${label} started — ${opener} goes first (O).`
+        : `${label} started — ${opener} goes first.`
+    this.pushRoomSystemChat(text)
+  }
+
+  private announceGameFinished(g: AnyGameState): void {
+    if (g.status !== 'completed' || !g.result) return
+    const label = this.gameLabel(g.game)
+    const r = g.result
+    if (r.winner === null) {
+      this.pushRoomSystemChat(`${label} ended in a draw.`)
+      return
+    }
+    const winnerName = this.displayNameFor(r.winner)
+    if (r.reason === 'surrender') {
+      const loserId = g.players[0] === r.winner ? g.players[1] : g.players[0]
+      this.pushRoomSystemChat(`${this.displayNameFor(loserId)} surrendered — ${winnerName} wins.`)
+      return
+    }
+    const phrase =
+      r.reason === 'four_in_a_row'
+        ? 'four in a row'
+        : r.reason === 'three_in_row'
+          ? 'three in a row'
+          : r.reason === 'forfeit'
+            ? 'forfeit'
+            : r.reason
+    this.pushRoomSystemChat(`${label} ended — ${winnerName} wins (${phrase}).`)
+  }
+
+  private pushRoomSystemChat(text: string): void {
+    const msg: ChatMessagePayload = {
+      scope: 'room',
+      roomId: this.roomId,
+      senderId: SYSTEM_ANNOUNCEMENT_PLAYER_ID,
+      displayName: 'Room',
+      text,
+      sentAt: Date.now(),
+      system: true,
+    }
+    this.appendRoomChatHistory(msg)
+    this.broadcastRoomChatLine(msg)
   }
 
   /** Recent room chat for a connection that just joined. */
@@ -104,9 +202,8 @@ export class PlayerRoom {
       text: clean,
       sentAt: Date.now(),
     }
-    this.pushRoomChat(msg)
-    const payload = JSON.stringify({ type: 'chat_message', ...msg })
-    this.sockets.forEach((ws) => ws.readyState === WebSocket.OPEN && ws.send(payload))
+    this.appendRoomChatHistory(msg)
+    this.broadcastRoomChatLine(msg)
     return true
   }
 
@@ -158,11 +255,17 @@ export class PlayerRoom {
     this.seats[seat] = { id: playerId, displayName }
     this.sockets.set(seat, ws)
 
+    if (this.leaderId === null) {
+      this.leaderId = playerId
+    }
+    const leaderForJoin = this.leaderId as PlayerId
+
     const personal: ServerMessage = {
       type: 'joined_room',
       roomId: this.roomId,
       playerId,
       seat,
+      leaderId: leaderForJoin,
     }
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(personal))
 
@@ -171,8 +274,9 @@ export class PlayerRoom {
     return { seat, playerId }
   }
 
-  createGame(kind: GameKind): boolean {
+  createGame(kind: GameKind, requesterId: PlayerId): boolean {
     if (this.activeGame?.status === 'in_progress') return false
+    if (requesterId !== this.leaderId) return false
 
     const engine = getEngine(kind)
     const seated = this.seatedCount()
@@ -188,6 +292,7 @@ export class PlayerRoom {
     this.activeGame = engine.create(this.roomId, gameSessionId, players)
 
     this.log.info({ kind, gameSessionId }, 'game created')
+    this.announceGameStarted()
     this.broadcast()
     return true
   }
@@ -209,6 +314,7 @@ export class PlayerRoom {
     if (r.kind === 'finished') {
       if (r.winner) this.addWin(r.winner)
       this.setListingStatus(g.gameSessionId, 'completed')
+      this.announceGameFinished(g)
       this.log.info({ game: g.game, playerId, move, winner: r.winner }, 'game finished from move')
     } else {
       this.log.debug({ game: g.game, playerId, move, nextTurn: g.currentTurn }, 'move applied')
@@ -232,6 +338,7 @@ export class PlayerRoom {
 
     this.setListingStatus(gameSessionId, 'in_progress')
     this.log.info({ gameSessionId }, 'new round started')
+    this.announceGameStarted()
     this.broadcast()
     return true
   }
@@ -245,6 +352,7 @@ export class PlayerRoom {
     const opponent = getEngineForActiveState(g).surrender(g, playerId)
     this.addWin(opponent)
     this.setListingStatus(gameSessionId, 'completed')
+    this.announceGameFinished(g)
     this.log.info({ loser: playerId, winner: opponent }, 'game ended surrender')
     this.broadcast()
     return true
@@ -262,10 +370,23 @@ export class PlayerRoom {
   }
 
   disconnect(seat: Color) {
-    this.sockets.delete(seat)
     const leaving = this.seats[seat]
+    const leavingId = leaving?.id ?? null
+    const otherSeat: Color = seat === 'red' ? 'yellow' : 'red'
+    const other = this.seats[otherSeat]
+
+    this.sockets.delete(seat)
     this.seats[seat] = null
     if (leaving) this.matchPoints.delete(leaving.id)
+
+    if (leavingId && leavingId === this.leaderId) {
+      if (other) {
+        this.leaderId = other.id
+        this.pushRoomSystemChat(`${other.displayName} is now table host (previous host left).`)
+      } else {
+        this.leaderId = null
+      }
+    }
 
     if (this.activeGame?.status === 'in_progress') {
       const sid = this.activeGame.gameSessionId
@@ -280,6 +401,8 @@ export class PlayerRoom {
       this.games = []
       this.activeGame = null
       this.chatHistory = []
+      this.roomTitle = ''
+      this.leaderId = null
     }
 
     this.log.info({ seat }, 'player disconnected')

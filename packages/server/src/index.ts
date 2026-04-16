@@ -136,13 +136,13 @@ wss.on('connection', (ws) => {
       msg.roomId === assignedRoomId
     ) {
       const room = manager.get(assignedRoomId)
-      if (room && !room.createGame(msg.kind)) {
+      if (room && !room.createGame(msg.kind, assignedPlayerId)) {
         connLog.debug({ roomId: assignedRoomId }, 'create_game rejected')
         ws.send(
           JSON.stringify({
             type: 'error',
             message:
-              'Start a game only when both seats are filled, no game is already in progress, and you are in this room.',
+              'Only the table host can start a game. Both seats must be filled and no game can be in progress.',
           })
         )
       }
@@ -211,6 +211,42 @@ wss.on('connection', (ws) => {
           JSON.stringify({
             type: 'error',
             message: 'New game is only available after a finished round, from a seated player.',
+          })
+        )
+      }
+    }
+
+    if (
+      msg.type === 'set_room_title' &&
+      assignedRoomId &&
+      assignedPlayerId &&
+      msg.roomId === assignedRoomId
+    ) {
+      const room = manager.get(assignedRoomId)
+      if (room && !room.setRoomTitle(assignedPlayerId, msg.title)) {
+        connLog.debug({ roomId: assignedRoomId }, 'set_room_title rejected')
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            message: 'Only the table host can change the table name.',
+          })
+        )
+      }
+    }
+
+    if (
+      msg.type === 'transfer_leadership' &&
+      assignedRoomId &&
+      assignedPlayerId &&
+      msg.roomId === assignedRoomId
+    ) {
+      const room = manager.get(assignedRoomId)
+      if (room && !room.transferLeadership(assignedPlayerId, msg.newLeaderId)) {
+        connLog.debug({ roomId: assignedRoomId }, 'transfer_leadership rejected')
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            message: 'Only the current table host can pass host to the other seated player.',
           })
         )
       }

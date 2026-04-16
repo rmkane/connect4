@@ -10,13 +10,16 @@ export class GameManager {
   listLobbySummaries(): PublicRoomSummary[] {
     const list: PublicRoomSummary[] = []
     for (const room of this.rooms.values()) {
-      const redDisplayName = room.seats.red?.displayName ?? null
-      const yellowDisplayName = room.seats.yellow?.displayName ?? null
+      const snap = room.getSnapshot()
+      const redDisplayName = snap.seats.red?.displayName ?? null
+      const yellowDisplayName = snap.seats.yellow?.displayName ?? null
       const occupied = (redDisplayName ? 1 : 0) + (yellowDisplayName ? 1 : 0)
+      const roomTitle = snap.roomTitle.trim() ? snap.roomTitle : undefined
 
       if (occupied < 2) {
         list.push({
           roomId: room.roomId,
+          ...(roomTitle ? { roomTitle } : {}),
           status: 'waiting',
           redDisplayName,
           yellowDisplayName,
@@ -24,6 +27,7 @@ export class GameManager {
       } else {
         list.push({
           roomId: room.roomId,
+          ...(roomTitle ? { roomTitle } : {}),
           status: 'in_progress',
           redDisplayName,
           yellowDisplayName,

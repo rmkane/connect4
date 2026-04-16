@@ -11,9 +11,10 @@ export type LandingHandle = { destroy: () => void }
 function roomMatchesFilter(room: PublicRoomSummary, q: string): boolean {
   if (!q) return true
   const id = room.roomId.toLowerCase()
+  const title = (room.roomTitle ?? '').toLowerCase()
   const r = (room.redDisplayName ?? '').toLowerCase()
   const y = (room.yellowDisplayName ?? '').toLowerCase()
-  return id.includes(q) || r.includes(q) || y.includes(q)
+  return id.includes(q) || title.includes(q) || r.includes(q) || y.includes(q)
 }
 
 function roomIsJoinable(room: PublicRoomSummary): boolean {
@@ -169,6 +170,11 @@ export function mountLanding(opts: { host: HTMLElement; onCreate: () => void }):
                                       class="flex w-full flex-col items-stretch gap-0.5 rounded-lg border border-zinc-200 bg-zinc-50/80 px-3 py-2.5 text-left text-sm transition hover:border-zinc-300 hover:bg-white"
                                       @click=${() => navigateToRoom(room.roomId)}
                                     >
+                                      ${room.roomTitle
+                                        ? html`<span class="font-medium text-zinc-900"
+                                            >${room.roomTitle}</span
+                                          >`
+                                        : nothing}
                                       <span class="font-mono text-xs text-zinc-600"
                                         >${room.roomId}</span
                                       >
@@ -180,6 +186,11 @@ export function mountLanding(opts: { host: HTMLElement; onCreate: () => void }):
                                       class="flex flex-col gap-0.5 rounded-lg border border-zinc-200 bg-zinc-100/60 px-3 py-2.5 text-left text-sm text-zinc-600"
                                       aria-label="Table in progress, full"
                                     >
+                                      ${room.roomTitle
+                                        ? html`<span class="font-medium text-zinc-800"
+                                            >${room.roomTitle}</span
+                                          >`
+                                        : nothing}
                                       <span class="font-mono text-xs text-zinc-500"
                                         >${room.roomId}</span
                                       >

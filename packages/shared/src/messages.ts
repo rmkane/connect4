@@ -15,6 +15,10 @@ export type ClientMessage =
   | { type: 'surrender'; roomId: string; gameSessionId: string }
   /** After a finished game, return to the “choose a game” screen (either player may send). */
   | { type: 'dismiss_completed_game'; roomId: string }
+  /** Table host only — short display title for the table (see `sanitizeRoomTitle`). */
+  | { type: 'set_room_title'; roomId: string; title: string }
+  /** Current table host only — hands host to another seated player. */
+  | { type: 'transfer_leadership'; roomId: string; newLeaderId: PlayerId }
   /** Join the global lobby chat on this socket (no account required). */
   | { type: 'chat_subscribe_global'; displayName: string }
   | { type: 'chat_send'; scope: 'room'; roomId: string; text: string }
@@ -24,7 +28,7 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: 'room_state'; snapshot: RoomSnapshot }
   /** Sent only to the connection that successfully `join_room`d (includes stable `playerId`). */
-  | { type: 'joined_room'; roomId: string; playerId: PlayerId; seat: Color }
+  | { type: 'joined_room'; roomId: string; playerId: PlayerId; seat: Color; leaderId: PlayerId }
   | { type: 'error'; message: string }
   | ({ type: 'chat_message' } & ChatMessagePayload)
   | {

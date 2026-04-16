@@ -14,6 +14,13 @@ export type AnyGameState = Connect4State | TicTacToeState
 
 export interface RoomSnapshot {
   roomId: string
+  /** Custom label for the table; empty means “use room id” in UI. */
+  roomTitle: string
+  /**
+   * Table host (first joiner, or promoted on host leave / `transfer_leadership`).
+   * `null` when the room is empty.
+   */
+  leaderId: PlayerId | null
   seats: { red: PlayerInfo | null; yellow: PlayerInfo | null }
   /**
    * Wins in this room keyed by `PlayerId` (draws do not increment).
@@ -27,6 +34,8 @@ export interface RoomSnapshot {
 /** Lobby row from `GET /api/rooms` (waiting with a free seat, or full table). */
 export interface PublicRoomSummary {
   roomId: string
+  /** Set when hosts rename the table (lobby display). */
+  roomTitle?: string
   status: 'waiting' | 'in_progress'
   redDisplayName: string | null
   yellowDisplayName: string | null
