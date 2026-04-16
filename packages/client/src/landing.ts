@@ -3,7 +3,6 @@ import { html, nothing, render } from 'lit'
 import type { PublicRoomSummary, RoomsListResponse } from '@connect4/shared'
 
 import { clientConfig } from '@/config.js'
-import { mountGlobalChatWidget } from '@/globalChatWidget.js'
 import { logger } from '@/logger.js'
 import { navigateToRoom, parseGameIdInput } from '@/router.js'
 
@@ -38,16 +37,6 @@ function inProgressSubtitle(room: PublicRoomSummary) {
 
 export function mountLanding(opts: { host: HTMLElement; onCreate: () => void }): LandingHandle {
   const { host, onCreate } = opts
-  host.replaceChildren()
-  const stack = document.createElement('div')
-  stack.className = 'flex w-full flex-col items-center gap-10'
-  const mainEl = document.createElement('div')
-  mainEl.className = 'w-full max-w-lg'
-  const globalChatHost = document.createElement('div')
-  globalChatHost.className = 'w-full max-w-lg'
-  stack.append(mainEl, globalChatHost)
-  host.append(stack)
-  const globalChat = mountGlobalChatWidget(globalChatHost)
 
   let rooms: PublicRoomSummary[] = []
   let loadError: string | null = null
@@ -205,7 +194,7 @@ export function mountLanding(opts: { host: HTMLElement; onCreate: () => void }):
           </section>
         </div>
       `,
-      mainEl
+      host
     )
   }
 
@@ -241,9 +230,7 @@ export function mountLanding(opts: { host: HTMLElement; onCreate: () => void }):
       clearInterval(pollTimer)
       pollTimer = null
     }
-    globalChat.destroy()
-    render(nothing, mainEl)
-    host.replaceChildren()
+    render(nothing, host)
   }
 
   return { destroy }

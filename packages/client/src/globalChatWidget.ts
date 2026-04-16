@@ -17,7 +17,16 @@ function formatTime(ts: number): string {
   }
 }
 
-export function mountGlobalChatWidget(host: HTMLElement): { destroy: () => void } {
+export type GlobalChatWidgetOptions = {
+  /** `sidebar`: home right column. `tabPanel`: room route Global tab (compact). */
+  variant?: 'default' | 'sidebar' | 'tabPanel'
+}
+
+export function mountGlobalChatWidget(
+  host: HTMLElement,
+  opts?: GlobalChatWidgetOptions
+): { destroy: () => void } {
+  const variant = opts?.variant ?? 'default'
   let ws: WebSocket | null = null
   let messages: ChatMessagePayload[] = []
   let draft = ''
@@ -90,17 +99,37 @@ export function mountGlobalChatWidget(host: HTMLElement): { destroy: () => void 
     paint()
   }
 
+  const sectionClass =
+    variant === 'tabPanel'
+      ? 'flex min-h-0 flex-1 flex-col text-left'
+      : variant === 'sidebar'
+        ? 'flex min-h-0 flex-1 flex-col rounded-xl border border-zinc-200 bg-white p-4 text-left shadow-sm sm:p-5'
+        : 'w-full rounded-xl border border-zinc-200 bg-white p-4 text-left shadow-sm sm:p-5'
+
+  const logClass =
+    variant === 'tabPanel'
+      ? 'mt-2 min-h-0 flex-1 overflow-y-auto rounded-lg border border-zinc-100 bg-zinc-50 p-2 text-sm'
+      : 'mt-3 max-h-40 overflow-y-auto rounded-lg border border-zinc-100 bg-zinc-50 p-2 text-sm'
+
   function shell(): TemplateResult {
     return html`
-      <section
-        class="w-full rounded-xl border border-zinc-200 bg-white p-4 text-left shadow-sm sm:p-5"
-        aria-label="Global chat"
-      >
-        <h2 class="text-sm font-semibold text-zinc-900">Global chat</h2>
-        <p class="mt-1 text-xs text-zinc-500">
-          Same server as games — no account. Be nice; messages are ephemeral.
-        </p>
-        <label class="mt-3 block text-xs font-medium text-zinc-600" for="global-chat-name"
+      <section class=${sectionClass} aria-label="Global chat">
+        ${variant === 'tabPanel'
+          ? nothing
+          : html`
+              <h2 class="text-sm font-semibold text-zinc-900">Global chat</h2>
+              <p class="mt-1 text-xs text-zinc-500">
+                Same server as games — no account. Be nice; messages are ephemeral.
+              </p>
+            `}
+        ${variant === 'tabPanel'
+          ? html`<p class="text-xs text-zinc-500">Everyone on this server.</p>`
+          : nothing}
+        <label
+          class="${variant === 'tabPanel'
+            ? 'mt-2'
+            : 'mt-3'} block text-xs font-medium text-zinc-600"
+          for="global-chat-name"
           >Show as</label
         >
         <input
@@ -112,11 +141,7 @@ export function mountGlobalChatWidget(host: HTMLElement): { destroy: () => void 
           .value=${displayName}
           @change=${(e: Event) => saveName((e.target as HTMLInputElement).value)}
         />
-        <div
-          class="mt-3 max-h-40 overflow-y-auto rounded-lg border border-zinc-100 bg-zinc-50 p-2 text-sm"
-          role="log"
-          aria-live="polite"
-        >
+        <div class=${logClass} role="log" aria-live="polite">
           ${messages.length === 0
             ? html`<p class="px-1 py-2 text-xs text-zinc-500">No messages yet.</p>`
             : messages.map(

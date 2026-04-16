@@ -32,8 +32,12 @@ function canUseWebShare(): boolean {
   return typeof navigator !== 'undefined' && typeof navigator.share === 'function'
 }
 
-export function mountGameSession(opts: { host: HTMLElement; roomId: string }): GameSessionHandle {
-  const { host, roomId } = opts
+export function mountGameSession(opts: {
+  host: HTMLElement
+  roomId: string
+  roomChatMount: HTMLElement
+}): GameSessionHandle {
+  const { host, roomId, roomChatMount } = opts
   let ws: WebSocket | null = null
   let displayName = ''
   let phase: 'name' | 'play' = 'name'
@@ -48,19 +52,30 @@ export function mountGameSession(opts: { host: HTMLElement; roomId: string }): G
     ws?.send(JSON.stringify(msg))
   }
 
-  function paintRoomChat() {
-    const el = document.getElementById('room-chat')
-    if (!el || phase !== 'play') return
+  function paintRoomChatPlaceholder() {
+    if (phase !== 'name') return
     render(
       html`
-        <section
-          class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm"
-          aria-label="Room chat"
+        <div
+          class="rounded-lg border border-dashed border-zinc-200 bg-white/80 p-4 text-left text-sm text-zinc-600"
         >
-          <h2 class="text-sm font-semibold text-zinc-900">Room chat</h2>
-          <p class="mt-1 text-xs text-zinc-500">
-            Only people seated in this room see these messages.
+          <p class="font-semibold text-zinc-900">Room chat</p>
+          <p class="mt-2 leading-relaxed">
+            Use the form in the center to join this room. After you are seated, messages you send
+            here are visible only to people at this table.
           </p>
+        </div>
+      `,
+      roomChatMount
+    )
+  }
+
+  function paintRoomChat() {
+    if (phase !== 'play') return
+    render(
+      html`
+        <section class="text-left" aria-label="Room chat">
+          <p class="text-xs text-zinc-500">Only people seated in this room see these messages.</p>
           <div
             class="mt-3 max-h-36 overflow-y-auto rounded-lg border border-zinc-100 bg-zinc-50 p-2 text-sm"
             role="log"
@@ -110,7 +125,7 @@ export function mountGameSession(opts: { host: HTMLElement; roomId: string }): G
           </div>
         </section>
       `,
-      el
+      roomChatMount
     )
   }
 
@@ -468,7 +483,6 @@ export function mountGameSession(opts: { host: HTMLElement; roomId: string }): G
                 class="flex w-full flex-col items-center"
                 aria-label="Play area"
               ></div>
-              <div id="room-chat" class="mt-6 w-full"></div>
             `}
       </div>
     `
@@ -478,6 +492,7 @@ export function mountGameSession(opts: { host: HTMLElement; roomId: string }): G
     render(shell(), host)
     if (phase === 'play' && lastSnapshot) paintBoardArea()
     if (phase === 'play') paintRoomChat()
+    else paintRoomChatPlaceholder()
   }
 
   function destroy() {
@@ -488,6 +503,7 @@ export function mountGameSession(opts: { host: HTMLElement; roomId: string }): G
     roomChatMessages = []
     roomChatDraft = ''
     setUserContext(null)
+    render(nothing, roomChatMount)
     render(nothing, host)
   }
 
