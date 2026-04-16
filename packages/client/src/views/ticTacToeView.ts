@@ -2,7 +2,10 @@ import { type TemplateResult, html, nothing, render } from 'lit'
 
 import type { PlayerId, RoomSnapshot, TicTacToeState } from '@gameroom/shared'
 
+import { rulesDialogMarkup, rulesOpenButton } from '@/views/gameRulesDialog.js'
 import { displayNameFor, markForPlayer, matchScoreFor } from '@/views/playerLabels.js'
+
+const TTT_RULES_DIALOG_ID = 'ttt-rules-dialog'
 
 function canPlay(
   state: TicTacToeState,
@@ -19,31 +22,40 @@ function snapshotSeatsFilled(snapshot: RoomSnapshot): boolean {
   return Boolean(snapshot.seats.red && snapshot.seats.yellow)
 }
 
-function headline(state: TicTacToeState, snapshot: RoomSnapshot): string {
-  switch (state.status) {
-    case 'in_progress': {
-      const mark = markForPlayer(state.players, state.currentTurn)
-      const who = displayNameFor(snapshot, state.currentTurn)
-      return `${who}'s turn — ${mark ?? '?'} to play`
+function youBannerLine(
+  snapshot: RoomSnapshot,
+  state: TicTacToeState,
+  myPlayerId: PlayerId | null
+): string {
+  if (myPlayerId === null) return 'You: spectating'
+  const n = displayNameFor(snapshot, myPlayerId)
+  const m = markForPlayer(state.players, myPlayerId)
+  return m ? `You: ${n} (${m})` : `You: ${n}`
+}
+
+function turnBannerLine(
+  state: TicTacToeState,
+  snapshot: RoomSnapshot,
+  myPlayerId: PlayerId | null
+): string {
+  if (state.status === 'abandoned') return 'Abandoned'
+  if (state.status === 'completed') {
+    const res = state.result
+    if (!res) return 'Finished'
+    if (res.reason === 'draw') return 'Result: draw'
+    if (res.winner) {
+      const wn = displayNameFor(snapshot, res.winner)
+      if (myPlayerId && res.winner === myPlayerId) return 'Result: you won'
+      if (myPlayerId && res.winner !== myPlayerId) return `Result: ${wn} won`
+      return `Result: ${wn} won`
     }
-    case 'completed': {
-      const res = state.result
-      if (!res) return 'Game over'
-      if (res.reason === 'draw') return 'Game over — draw'
-      if (res.reason === 'surrender' && res.winner) {
-        const wn = displayNameFor(snapshot, res.winner)
-        return `Game over — ${wn} wins (opponent surrendered)`
-      }
-      if (res.winner) {
-        const wn = displayNameFor(snapshot, res.winner)
-        const m = markForPlayer(state.players, res.winner)
-        return m ? `Game over — ${wn} (${m}) wins` : `Game over — ${wn} wins`
-      }
-      return 'Game over'
-    }
-    case 'abandoned':
-      return 'Game abandoned'
+    return 'Finished'
   }
+  const who = displayNameFor(snapshot, state.currentTurn)
+  const mark = markForPlayer(state.players, state.currentTurn)
+  const m = mark ?? '?'
+  if (myPlayerId === state.currentTurn) return `Turn: you (${m})`
+  return `Turn: ${who} (${m})`
 }
 
 function cellContent(
@@ -106,49 +118,68 @@ function boardTemplate(
     })
   )
 
+  const youLine = youBannerLine(snapshot, state, myPlayerId)
+  const turnLine = turnBannerLine(state, snapshot, myPlayerId)
+  const xScore = matchScoreFor(snapshot, xId)
+  const oScore = matchScoreFor(snapshot, oId)
+
   const myMark = myPlayerId ? markForPlayer(state.players, myPlayerId) : null
+  const seatNote =
+    myMark && state.status === 'in_progress'
+      ? html`<p class="text-xs text-zinc-600">You are playing <strong>${myMark}</strong>.</p>`
+      : myPlayerId === null && state.status === 'in_progress'
+        ? html`<p class="text-xs text-zinc-600">You are viewing without a seat in this game.</p>`
+        : nothing
+
+  const rulesBody = html`
+    <div class="space-y-3">
+      <p>
+        On your turn, place <strong>X</strong> or <strong>O</strong> in an empty cell. First to get
+        three in a row (row, column, or diagonal) wins.
+      </p>
+      <p class="text-xs text-zinc-500">
+        Marks are assigned at random each game. <strong>O</strong> always moves first, then you
+        alternate.
+      </p>
+      <div class="border-t border-zinc-200 pt-3 text-xs text-zinc-700">
+        <p><span class="font-semibold text-red-700">X</span>: ${displayNameFor(snapshot, xId)}</p>
+        <p class="mt-1">
+          <span class="font-semibold text-blue-700">O</span>: ${displayNameFor(snapshot, oId)}
+        </p>
+      </div>
+      ${seatNote}
+    </div>
+  `
 
   return html`
     <div
-      class="mx-auto flex max-w-full flex-col gap-6 px-2 py-2 font-sans sm:px-4 sm:py-4 lg:flex-row lg:items-start lg:justify-center lg:gap-10"
+      class="mx-auto flex w-full max-w-full flex-col items-center gap-2 px-2 py-2 font-sans sm:px-3"
     >
-      <section
-        class="w-full max-w-md min-w-0 shrink-0 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm lg:w-88"
+      <div
+        class="flex w-full max-w-[min(100%,28rem)] min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-[11px] text-zinc-800 shadow-sm sm:text-xs"
         aria-live="polite"
       >
-        <h2 class="text-lg font-semibold text-zinc-900">${headline(state, snapshot)}</h2>
-        <p class="mt-2 text-xs font-medium tracking-wide text-zinc-500 uppercase">Tic-tac-toe</p>
-        <p class="mt-1 text-xs text-zinc-500">
-          X and O are assigned at random each game. O always moves first, then you alternate.
-        </p>
-        <div class="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
-          <p>
-            <span class="font-medium text-red-700">X</span>:
-            <span class="text-zinc-700">${displayNameFor(snapshot, xId)}</span>
-          </p>
-          <p>
-            <span class="font-medium text-blue-700">O</span>:
-            <span class="text-zinc-700">${displayNameFor(snapshot, oId)}</span>
-          </p>
-        </div>
-        <p class="mt-3 text-xs font-medium tracking-wide text-zinc-500 uppercase">Games won</p>
-        <p class="mt-1 text-base font-semibold text-zinc-900 tabular-nums">
-          <span class="text-red-700">X ${matchScoreFor(snapshot, xId)}</span>
-          <span class="mx-1.5 font-normal text-zinc-400">—</span>
-          <span class="text-blue-700">O ${matchScoreFor(snapshot, oId)}</span>
-        </p>
-        ${myMark
-          ? html`<p class="mt-2 text-sm text-zinc-600">
-              You are playing <strong>${myMark}</strong>.
-            </p>`
-          : myPlayerId === null && state.status === 'in_progress'
-            ? html`<p class="mt-2 text-sm text-zinc-600">You are viewing (not seated).</p>`
-            : nothing}
+        <span class="shrink-0 font-semibold tracking-tight text-zinc-900">Tic-tac-toe</span>
+        <span class="hidden h-3 w-px shrink-0 bg-zinc-300 sm:block" aria-hidden="true"></span>
+        <span class="min-w-0 truncate sm:max-w-[40%]" title=${youLine}>${youLine}</span>
+        <span class="hidden h-3 w-px shrink-0 bg-zinc-300 md:block" aria-hidden="true"></span>
+        <span class="min-w-0 flex-1 truncate text-zinc-700" title=${turnLine}>${turnLine}</span>
+        <span
+          class="ml-auto shrink-0 font-mono font-semibold text-zinc-900 tabular-nums sm:text-sm"
+          title="Games won (X — O)"
+        >
+          <span class="text-red-700">${xScore}</span><span class="mx-0.5 text-zinc-400">—</span
+          ><span class="text-blue-700">${oScore}</span>
+        </span>
+      </div>
+
+      <div class="flex w-full max-w-[min(100%,28rem)] flex-wrap items-center justify-center gap-2">
+        ${rulesOpenButton(TTT_RULES_DIALOG_ID)}
         ${showSurrender
           ? html`
               <button
                 type="button"
-                class="mt-4 w-full rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-900 shadow-sm transition hover:bg-red-100"
+                class="rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-900 shadow-sm transition hover:bg-red-100 sm:text-sm"
                 @click=${() => {
                   if (confirm('Surrender? Your opponent wins this game.')) onSurrender()
                 }}
@@ -159,27 +190,25 @@ function boardTemplate(
           : nothing}
         ${showCompletedActions
           ? html`
-              <div class="mt-4 flex flex-col gap-2">
-                <button
-                  type="button"
-                  class="w-full rounded-lg bg-red-700 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-800"
-                  @click=${onPlayAgain}
-                >
-                  Play again
-                </button>
-                <button
-                  type="button"
-                  class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50"
-                  @click=${onChooseAnotherGame}
-                >
-                  New game
-                </button>
-              </div>
+              <button
+                type="button"
+                class="rounded-md bg-red-700 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-red-800 sm:text-sm"
+                @click=${onPlayAgain}
+              >
+                Play again
+              </button>
+              <button
+                type="button"
+                class="rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50 sm:text-sm"
+                @click=${onChooseAnotherGame}
+              >
+                New game
+              </button>
             `
           : nothing}
-      </section>
+      </div>
 
-      <div class="flex shrink-0 flex-col items-center lg:items-start">
+      <div class="flex shrink-0 flex-col items-center">
         <div
           class="grid w-max shrink-0 auto-rows-[2.5rem] grid-cols-3 gap-1"
           aria-label="Tic-tac-toe board"
@@ -187,6 +216,8 @@ function boardTemplate(
           ${rows.flat()}
         </div>
       </div>
+
+      ${rulesDialogMarkup(TTT_RULES_DIALOG_ID, 'Tic-tac-toe — how to play', rulesBody)}
     </div>
   `
 }
