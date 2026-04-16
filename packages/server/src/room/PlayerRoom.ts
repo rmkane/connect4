@@ -7,7 +7,6 @@ import type {
   AnyGameState,
   ChatMessagePayload,
   Color,
-  Connect4State,
   GameKind,
   GameListing,
   GameMove,
@@ -15,12 +14,12 @@ import type {
   PlayerInfo,
   RoomSnapshot,
   ServerMessage,
-  TicTacToeState,
 } from '@gameroom/shared'
 import { CHAT_HISTORY_LIMIT, sanitizeChatText } from '@gameroom/shared'
 
-import * as connect4 from '@/games/connect4/rules.js'
-import * as ticTacToe from '@/games/ticTacToe/rules.js'
+import * as connect4Session from '@/game/connect4Session.js'
+import { applySurrender } from '@/game/surrender.js'
+import * as ticTacToeSession from '@/game/ticTacToeSession.js'
 import { logger } from '@/logger.js'
 
 export class PlayerRoom {
@@ -137,11 +136,6 @@ export class PlayerRoom {
     return Math.random() < 0.5 ? [a, b] : [b, a]
   }
 
-  /** Connect 4: random opener each game/round (after role shuffle). */
-  private pickConnect4Opening(players: readonly [PlayerId, PlayerId]): PlayerId {
-    return Math.random() < 0.5 ? players[0] : players[1]
-  }
-
   join(ws: WebSocket, displayName: string): { seat: Color; playerId: PlayerId } | null {
     const seat: Color | null = !this.seats.red ? 'red' : !this.seats.yellow ? 'yellow' : null
 
@@ -173,29 +167,10 @@ export class PlayerRoom {
 
     const players = this.shuffledPlayers()
 
-    if (kind === 'connect4') {
-      this.activeGame = {
-        game: 'connect4',
-        roomId: this.roomId,
-        gameSessionId,
-        players,
-        board: connect4.makeBoard(),
-        currentTurn: this.pickConnect4Opening(players),
-        status: 'in_progress',
-        result: null,
-      }
-    } else {
-      this.activeGame = {
-        game: 'tic_tac_toe',
-        roomId: this.roomId,
-        gameSessionId,
-        players,
-        board: ticTacToe.makeBoard(),
-        currentTurn: players[1],
-        status: 'in_progress',
-        result: null,
-      }
-    }
+    this.activeGame =
+      kind === 'connect4'
+        ? connect4Session.createGame(this.roomId, gameSessionId, players)
+        : ticTacToeSession.createGame(this.roomId, gameSessionId, players)
 
     this.log.info({ kind, gameSessionId }, 'game created')
     this.broadcast()
@@ -211,64 +186,42 @@ export class PlayerRoom {
     if (g.currentTurn !== playerId) return
 
     if (g.game === 'connect4' && move.game === 'connect4') {
-      this.applyConnect4Drop(g, playerId, move.column)
+      const r = connect4Session.applyMove(g, playerId, move.column)
+      if (r.kind === 'invalid') {
+        this.log.debug({ playerId, column: move.column }, 'connect4 drop ignored')
+        return
+      }
+      if (r.kind === 'finished') {
+        if (r.winner) this.addWin(r.winner)
+        this.setListingStatus(g.gameSessionId, 'completed')
+        if (r.winner) this.log.info({ playerId, column: move.column }, 'connect4 won')
+        else this.log.info('connect4 draw')
+      } else {
+        this.log.debug(
+          { playerId, column: move.column, nextTurn: g.currentTurn },
+          'connect4 piece placed'
+        )
+      }
+      this.broadcast()
     } else if (g.game === 'tic_tac_toe' && move.game === 'tic_tac_toe') {
-      this.applyTicTacToeMove(g, playerId, move.row, move.col)
+      const r = ticTacToeSession.applyMove(g, playerId, move.row, move.col)
+      if (r.kind === 'invalid') {
+        this.log.debug({ playerId, row: move.row, col: move.col }, 'tic-tac-toe move ignored')
+        return
+      }
+      if (r.kind === 'finished') {
+        if (r.winner) this.addWin(r.winner)
+        this.setListingStatus(g.gameSessionId, 'completed')
+        if (r.winner) this.log.info({ playerId, row: move.row, col: move.col }, 'tic-tac-toe won')
+        else this.log.info('tic-tac-toe draw')
+      } else {
+        this.log.debug(
+          { playerId, row: move.row, col: move.col, nextTurn: g.currentTurn },
+          'tic-tac-toe move'
+        )
+      }
+      this.broadcast()
     }
-  }
-
-  private applyConnect4Drop(state: Connect4State, playerId: PlayerId, column: number) {
-    const row = connect4.dropPiece(state.board, column, playerId)
-    if (row === -1) {
-      this.log.debug({ playerId, column }, 'connect4 drop ignored')
-      return
-    }
-
-    if (connect4.checkWin(state.board, row, column)) {
-      state.status = 'completed'
-      state.result = { winner: playerId, reason: 'four_in_a_row' }
-      this.addWin(playerId)
-      this.setListingStatus(state.gameSessionId, 'completed')
-      this.log.info({ playerId, column, row }, 'connect4 won')
-    } else if (connect4.checkDraw(state.board)) {
-      state.status = 'completed'
-      state.result = { winner: null, reason: 'draw' }
-      this.setListingStatus(state.gameSessionId, 'completed')
-      this.log.info('connect4 draw')
-    } else {
-      state.currentTurn = connect4.otherPlayer(state.players, playerId)
-      this.log.debug(
-        { playerId, column, row, nextTurn: state.currentTurn },
-        'connect4 piece placed'
-      )
-    }
-
-    this.broadcast()
-  }
-
-  private applyTicTacToeMove(state: TicTacToeState, playerId: PlayerId, row: number, col: number) {
-    if (!ticTacToe.placePiece(state.board, row, col, playerId)) {
-      this.log.debug({ playerId, row, col }, 'tic-tac-toe move ignored')
-      return
-    }
-
-    if (ticTacToe.checkWin(state.board, row, col)) {
-      state.status = 'completed'
-      state.result = { winner: playerId, reason: 'three_in_row' }
-      this.addWin(playerId)
-      this.setListingStatus(state.gameSessionId, 'completed')
-      this.log.info({ playerId, row, col }, 'tic-tac-toe won')
-    } else if (ticTacToe.checkDraw(state.board)) {
-      state.status = 'completed'
-      state.result = { winner: null, reason: 'draw' }
-      this.setListingStatus(state.gameSessionId, 'completed')
-      this.log.info('tic-tac-toe draw')
-    } else {
-      state.currentTurn = connect4.otherPlayer(state.players, playerId)
-      this.log.debug({ playerId, row, col, nextTurn: state.currentTurn }, 'tic-tac-toe move')
-    }
-
-    this.broadcast()
   }
 
   /** Another round of the same active game after it completed; both seats and sockets required. */
@@ -285,17 +238,9 @@ export class PlayerRoom {
     const nextPlayers = this.shuffledPlayers()
 
     if (g.game === 'connect4') {
-      g.players = nextPlayers
-      g.board = connect4.makeBoard()
-      g.currentTurn = this.pickConnect4Opening(nextPlayers)
-      g.status = 'in_progress'
-      g.result = null
+      connect4Session.startNewRound(g, nextPlayers)
     } else {
-      g.players = nextPlayers
-      g.board = ticTacToe.makeBoard()
-      g.currentTurn = nextPlayers[1]
-      g.status = 'in_progress'
-      g.result = null
+      ticTacToeSession.startNewRound(g, nextPlayers)
     }
 
     this.setListingStatus(gameSessionId, 'in_progress')
@@ -310,9 +255,7 @@ export class PlayerRoom {
     if (g.status !== 'in_progress') return false
     if (!this.isSeatedPlayer(playerId)) return false
 
-    const opponent = connect4.otherPlayer(g.players, playerId)
-    g.status = 'completed'
-    g.result = { winner: opponent, reason: 'surrender' }
+    const opponent = applySurrender(g, playerId)
     this.addWin(opponent)
     this.setListingStatus(gameSessionId, 'completed')
     this.log.info({ loser: playerId, winner: opponent }, 'game ended surrender')

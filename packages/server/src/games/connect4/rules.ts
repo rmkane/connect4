@@ -54,8 +54,3 @@ function countLine(
 export function checkDraw(board: Connect4Cell[][]): boolean {
   return board[0].every((cell) => cell !== null)
 }
-
-/** Opponent in a two-player `players` tuple. */
-export function otherPlayer(players: readonly [PlayerId, PlayerId], playerId: PlayerId): PlayerId {
-  return players[0] === playerId ? players[1] : players[0]
-}
