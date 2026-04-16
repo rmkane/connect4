@@ -1,5 +1,6 @@
 import type { ChatMessagePayload } from '@/chat.js'
 import type { Color, PlayerId } from '@/core.js'
+import type { GameMetricsSummary } from '@/gameMetrics.js'
 import type { GameKind, RoomSnapshot } from '@/room.js'
 
 export type GameMove =
@@ -37,3 +38,5 @@ export type ServerMessage =
       roomId?: string
       messages: ChatMessagePayload[]
     }
+  /** Sent to all seated connections when a game leaves `in_progress` (completed or abandoned). */
+  | { type: 'game_summary'; summary: GameMetricsSummary }

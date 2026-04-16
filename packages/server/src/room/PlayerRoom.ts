@@ -9,7 +9,10 @@ import type {
   Color,
   GameKind,
   GameListing,
+  GameMetricsEndReason,
+  GameMetricsSummary,
   GameMove,
+  GamePlayerMetricRow,
   PlayerId,
   PlayerInfo,
   RoomSnapshot,
@@ -25,6 +28,14 @@ import {
 import { getEngine, getEngineForActiveState } from '@/game/gameEngines.js'
 import { logger } from '@/logger.js'
 
+interface ActiveGameMetrics {
+  gameSessionId: string
+  gameStartedAt: number
+  turnStartedAt: number
+  nextMoveIndex: number
+  turns: { playerId: PlayerId; durationMs: number; moveIndex: number }[]
+}
+
 export class PlayerRoom {
   /** Custom table label (empty = clients show room id). */
   roomTitle = ''
@@ -39,6 +50,7 @@ export class PlayerRoom {
   activeGame: AnyGameState | null = null
   sockets: Map<Color, WebSocket> = new Map()
   private chatHistory: ChatMessagePayload[] = []
+  private gameMetrics: ActiveGameMetrics | null = null
   private readonly log: Logger
 
   constructor(public readonly roomId: string) {
@@ -87,6 +99,106 @@ export class PlayerRoom {
     this.sockets.forEach((ws) => ws.readyState === WebSocket.OPEN && ws.send(payload))
   }
 
+  private broadcastGameSummary(summary: GameMetricsSummary) {
+    const payload = JSON.stringify({
+      type: 'game_summary',
+      summary,
+    } satisfies ServerMessage)
+    this.sockets.forEach((ws) => ws.readyState === WebSocket.OPEN && ws.send(payload))
+  }
+
+  private initGameMetrics(gameSessionId: string): void {
+    const now = Date.now()
+    this.gameMetrics = {
+      gameSessionId,
+      gameStartedAt: now,
+      turnStartedAt: now,
+      nextMoveIndex: 1,
+      turns: [],
+    }
+  }
+
+  private commitTurnTiming(
+    playerId: PlayerId,
+    gameSessionId: string,
+    when: number,
+    advanceTurnClock: boolean
+  ): void {
+    const m = this.gameMetrics
+    if (!m || m.gameSessionId !== gameSessionId) return
+    const durationMs = Math.max(0, when - m.turnStartedAt)
+    m.turns.push({ playerId, durationMs, moveIndex: m.nextMoveIndex++ })
+    if (advanceTurnClock) m.turnStartedAt = when
+  }
+
+  private perPlayerMetricRows(
+    roster: readonly [PlayerId, PlayerId],
+    turns: readonly { playerId: PlayerId; durationMs: number; moveIndex: number }[]
+  ): readonly [GamePlayerMetricRow, GamePlayerMetricRow] {
+    const build = (pid: PlayerId): GamePlayerMetricRow => {
+      const mine = turns.filter((t) => t.playerId === pid)
+      const totalThinkMs = mine.reduce((s, t) => s + t.durationMs, 0)
+      const turnCount = mine.length
+      return {
+        id: pid,
+        displayName: this.displayNameFor(pid),
+        turnCount,
+        totalThinkMs,
+        avgThinkMs: turnCount > 0 ? Math.round(totalThinkMs / turnCount) : 0,
+        fastestTurnMs: turnCount > 0 ? Math.min(...mine.map((t) => t.durationMs)) : 0,
+        slowestTurnMs: turnCount > 0 ? Math.max(...mine.map((t) => t.durationMs)) : 0,
+      }
+    }
+    return [build(roster[0]), build(roster[1])]
+  }
+
+  private buildGameMetricsSummary(
+    g: AnyGameState,
+    m: ActiveGameMetrics,
+    endedAt: number,
+    outcome: {
+      status: 'completed' | 'abandoned'
+      winnerId: PlayerId | null
+      reason: GameMetricsEndReason
+    }
+  ): GameMetricsSummary {
+    const roster = g.players
+    const gameDurationMs = Math.max(0, endedAt - m.gameStartedAt)
+    const p0 = roster[0]
+    const p1 = roster[1]
+    return {
+      roomId: this.roomId,
+      gameSessionId: g.gameSessionId,
+      gameKind: g.game,
+      endedAt,
+      gameDurationMs,
+      outcome,
+      players: [
+        { id: p0, displayName: this.displayNameFor(p0), seat: this.seatColorFor(p0) },
+        { id: p1, displayName: this.displayNameFor(p1), seat: this.seatColorFor(p1) },
+      ],
+      roster,
+      turns: m.turns.map((t) => ({ ...t })),
+      byPlayer: this.perPlayerMetricRows(roster, m.turns),
+    }
+  }
+
+  private finalizeGameMetrics(
+    g: AnyGameState,
+    outcome: {
+      status: 'completed' | 'abandoned'
+      winnerId: PlayerId | null
+      reason: GameMetricsEndReason
+    }
+  ): void {
+    const m = this.gameMetrics
+    if (!m || m.gameSessionId !== g.gameSessionId) return
+    const endedAt = Date.now()
+    const summary = this.buildGameMetricsSummary(g, m, endedAt, outcome)
+    this.gameMetrics = null
+    this.broadcastGameSummary(summary)
+  }
+
   /** Table host may rename the table (empty title clears the custom label). */
   setRoomTitle(playerId: PlayerId, rawTitle: string): boolean {
     if (!this.isSeatedPlayer(playerId)) return false
@@ -112,6 +224,12 @@ export class PlayerRoom {
     if (this.seats.red?.id === playerId) return this.seats.red.displayName
     if (this.seats.yellow?.id === playerId) return this.seats.yellow.displayName
     return 'Player'
+  }
+
+  private seatColorFor(playerId: PlayerId): 'red' | 'yellow' | null {
+    if (this.seats.red?.id === playerId) return 'red'
+    if (this.seats.yellow?.id === playerId) return 'yellow'
+    return null
   }
 
   private gameLabel(game: AnyGameState['game']): string {
@@ -290,6 +408,7 @@ export class PlayerRoom {
     const players = this.shuffledPlayers()
 
     this.activeGame = engine.create(this.roomId, gameSessionId, players)
+    this.initGameMetrics(gameSessionId)
 
     this.log.info({ kind, gameSessionId }, 'game created')
     this.announceGameStarted()
@@ -311,15 +430,24 @@ export class PlayerRoom {
       this.log.debug({ game: g.game, playerId, move }, 'move ignored')
       return
     }
+    const tAfter = Date.now()
+    this.commitTurnTiming(playerId, gameSessionId, tAfter, r.kind === 'ongoing')
     if (r.kind === 'finished') {
       if (r.winner) this.addWin(r.winner)
       this.setListingStatus(g.gameSessionId, 'completed')
       this.announceGameFinished(g)
       this.log.info({ game: g.game, playerId, move, winner: r.winner }, 'game finished from move')
+      this.broadcast()
+      const reason = (g.result?.reason ?? 'draw') as GameMetricsEndReason
+      this.finalizeGameMetrics(g, {
+        status: 'completed',
+        winnerId: r.winner,
+        reason,
+      })
     } else {
       this.log.debug({ game: g.game, playerId, move, nextTurn: g.currentTurn }, 'move applied')
+      this.broadcast()
     }
-    this.broadcast()
   }
 
   /** Another round of the same active game after it completed; both seats and sockets required. */
@@ -335,6 +463,7 @@ export class PlayerRoom {
     const nextPlayers = this.shuffledPlayers()
 
     engine.startNewRound(g, nextPlayers)
+    this.initGameMetrics(gameSessionId)
 
     this.setListingStatus(gameSessionId, 'in_progress')
     this.log.info({ gameSessionId }, 'new round started')
@@ -349,12 +478,19 @@ export class PlayerRoom {
     if (g.status !== 'in_progress') return false
     if (!this.isSeatedPlayer(playerId)) return false
 
+    const t = Date.now()
+    this.commitTurnTiming(playerId, gameSessionId, t, false)
     const opponent = getEngineForActiveState(g).surrender(g, playerId)
     this.addWin(opponent)
     this.setListingStatus(gameSessionId, 'completed')
     this.announceGameFinished(g)
     this.log.info({ loser: playerId, winner: opponent }, 'game ended surrender')
     this.broadcast()
+    this.finalizeGameMetrics(g, {
+      status: 'completed',
+      winnerId: opponent,
+      reason: 'surrender',
+    })
     return true
   }
 
@@ -364,6 +500,7 @@ export class PlayerRoom {
     if (!this.isSeatedPlayer(playerId)) return false
 
     this.activeGame = null
+    this.gameMetrics = null
     this.log.info({ playerId }, 'completed game dismissed')
     this.broadcast()
     return true
@@ -394,9 +531,11 @@ export class PlayerRoom {
       }
     }
 
+    let abandonedForMetrics: AnyGameState | null = null
     if (this.activeGame?.status === 'in_progress') {
-      const sid = this.activeGame.gameSessionId
-      this.setListingStatus(sid, 'abandoned')
+      const g = this.activeGame
+      abandonedForMetrics = g
+      this.setListingStatus(g.gameSessionId, 'abandoned')
       this.activeGame = null
     } else if (this.activeGame?.status === 'completed') {
       this.activeGame = null
@@ -406,6 +545,7 @@ export class PlayerRoom {
       this.matchPoints.clear()
       this.games = []
       this.activeGame = null
+      if (!abandonedForMetrics) this.gameMetrics = null
       this.chatHistory = []
       this.roomTitle = ''
       this.leaderId = null
@@ -413,5 +553,12 @@ export class PlayerRoom {
 
     this.log.info({ seat }, 'player disconnected')
     this.broadcast()
+    if (abandonedForMetrics) {
+      this.finalizeGameMetrics(abandonedForMetrics, {
+        status: 'abandoned',
+        winnerId: null,
+        reason: 'abandoned',
+      })
+    }
   }
 }

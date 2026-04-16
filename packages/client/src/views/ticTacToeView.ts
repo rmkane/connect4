@@ -155,13 +155,16 @@ function boardTemplate(
   onPlayAgain: () => void,
   onChooseAnotherGame: () => void,
   onSurrender: () => void,
-  myPlayerId: PlayerId | null
+  myPlayerId: PlayerId | null,
+  recap: { show: boolean; onOpen: () => void } | null
 ): TemplateResult {
   const showCompletedActions =
     state.status === 'completed' &&
     myPlayerId !== null &&
     snapshotSeatsFilled(snapshot) &&
     Boolean(snapshot.seats.red && snapshot.seats.yellow)
+  const showRecapButton =
+    state.status === 'completed' && recap !== null && recap.show && snapshotSeatsFilled(snapshot)
   const showSurrender = state.status === 'in_progress' && myPlayerId !== null
   const [xId, oId] = state.players
 
@@ -250,6 +253,17 @@ function boardTemplate(
               </button>
             `
           : nothing}
+        ${showRecapButton
+          ? html`
+              <button
+                type="button"
+                class="rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50 sm:text-sm"
+                @click=${() => recap!.onOpen()}
+              >
+                Game recap
+              </button>
+            `
+          : nothing}
         ${showCompletedActions
           ? html`
               <button
@@ -309,7 +323,8 @@ export function renderTicTacToeView(
   onPlayAgain: () => void,
   onChooseAnotherGame: () => void,
   onSurrender: () => void,
-  myPlayerId: PlayerId | null
+  myPlayerId: PlayerId | null,
+  recap: { show: boolean; onOpen: () => void } | null = null
 ) {
   const container = document.getElementById('board')
   if (!container) return
@@ -322,7 +337,8 @@ export function renderTicTacToeView(
       onPlayAgain,
       onChooseAnotherGame,
       onSurrender,
-      myPlayerId
+      myPlayerId,
+      recap
     ),
     container
   )

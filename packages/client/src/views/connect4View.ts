@@ -185,7 +185,8 @@ function boardTemplate(
   onPlayAgain: () => void,
   onChooseAnotherGame: () => void,
   onSurrender: () => void,
-  myPlayerId: PlayerId | null
+  myPlayerId: PlayerId | null,
+  recap: { show: boolean; onOpen: () => void } | null
 ): TemplateResult {
   const allowDrop = canDrop(state, myPlayerId)
   const showCompletedActions =
@@ -193,6 +194,8 @@ function boardTemplate(
     myPlayerId !== null &&
     snapshotSeatsFilled(snapshot) &&
     Boolean(snapshot.seats.red && snapshot.seats.yellow)
+  const showRecapButton =
+    state.status === 'completed' && recap !== null && recap.show && snapshotSeatsFilled(snapshot)
   const showSurrender = state.status === 'in_progress' && myPlayerId !== null
   const showDropRow = state.status === 'in_progress'
   const cols = state.board[0].length
@@ -283,6 +286,17 @@ function boardTemplate(
               </button>
             `
           : nothing}
+        ${showRecapButton
+          ? html`
+              <button
+                type="button"
+                class="rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50 sm:text-sm"
+                @click=${() => recap!.onOpen()}
+              >
+                Game recap
+              </button>
+            `
+          : nothing}
         ${showCompletedActions
           ? html`
               <button
@@ -342,7 +356,8 @@ export function renderConnect4View(
   onPlayAgain: () => void,
   onChooseAnotherGame: () => void,
   onSurrender: () => void,
-  myPlayerId: PlayerId | null
+  myPlayerId: PlayerId | null,
+  recap: { show: boolean; onOpen: () => void } | null = null
 ) {
   const container = document.getElementById('board')
   if (!container) return
@@ -355,7 +370,8 @@ export function renderConnect4View(
       onPlayAgain,
       onChooseAnotherGame,
       onSurrender,
-      myPlayerId
+      myPlayerId,
+      recap
     ),
     container
   )

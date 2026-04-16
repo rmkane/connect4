@@ -2,9 +2,11 @@ import { type TemplateResult, html, nothing, render } from 'lit'
 import { live } from 'lit/directives/live.js'
 
 import type {
+  AnyGameState,
   ChatMessagePayload,
   ClientMessage,
   GameKind,
+  GameMetricsSummary,
   PlayerId,
   RoomSnapshot,
   ServerMessage,
@@ -22,14 +24,21 @@ import { navigateHome } from '@/router.js'
 import { clearSessionContext, paintRoomSessionChrome } from '@/sessionContext.js'
 import { alertModal, openModalById } from '@/views/appModal.js'
 import { renderConnect4View } from '@/views/connect4View.js'
+import { gameSummaryDialog } from '@/views/gameSummaryDialog.js'
 import { renderTicTacToeView } from '@/views/ticTacToeView.js'
 
 const ROOM_CHAT_LOG_ID = 'gameroom-room-chat-log'
 const ROOM_DISPLAY_NAME_MAX = 64
 const SESSION_ERR_DLG_ID = 'gs-session-err-dlg'
 const SESSION_JOIN_NAME_DLG_ID = 'gs-join-name-dlg'
+const GAME_SUMMARY_DLG_ID = 'gs-game-summary-dlg'
 
 export type GameSessionHandle = { destroy: () => void }
+
+function boardIsUnstarted(ag: AnyGameState): boolean {
+  if (ag.game === 'connect4') return ag.board.every((row) => row.every((c) => c === null))
+  return ag.board.every((row) => row.every((c) => c === null))
+}
 
 function formatChatTime(ts: number): string {
   try {
@@ -76,6 +85,30 @@ export function mountGameSession(opts: {
   let titleDraft = ''
   let serverErrorMessage: string | null = null
   let joinNameError: string | null = null
+  /** Latest finished game on this socket; kept after closing the recap dialog until stale or leave. */
+  let lastGameSummary: GameMetricsSummary | null = null
+
+  function openGameRecap() {
+    queueMicrotask(() => openModalById(GAME_SUMMARY_DLG_ID))
+  }
+
+  /** Drop recap when a new session starts or the same session begins a fresh round (Play again). */
+  function clearStaleGameSummary(snapshot: RoomSnapshot) {
+    if (!lastGameSummary) return
+    const ag = snapshot.activeGame
+    if (ag && ag.gameSessionId !== lastGameSummary.gameSessionId) {
+      lastGameSummary = null
+      return
+    }
+    if (
+      ag &&
+      ag.status === 'in_progress' &&
+      ag.gameSessionId === lastGameSummary.gameSessionId &&
+      boardIsUnstarted(ag)
+    ) {
+      lastGameSummary = null
+    }
+  }
 
   function send(msg: ClientMessage) {
     ws?.send(JSON.stringify(msg))
@@ -208,9 +241,14 @@ export function mountGameSession(opts: {
 
     if (!s.activeGame) {
       const isTableHost = Boolean(myPlayerId && s.leaderId === myPlayerId)
-      render(gamePicker(isTableHost), el)
+      render(gamePicker(isTableHost, Boolean(lastGameSummary)), el)
       return
     }
+
+    const recapForSession =
+      lastGameSummary && lastGameSummary.gameSessionId === s.activeGame.gameSessionId
+        ? { show: true, onOpen: openGameRecap }
+        : null
 
     if (s.activeGame.game === 'connect4') {
       const game = s.activeGame
@@ -238,7 +276,8 @@ export function mountGameSession(opts: {
           logger.debug({ roomId }, 'surrender connect4')
           send({ type: 'surrender', roomId, gameSessionId: game.gameSessionId })
         },
-        myPlayerId
+        myPlayerId,
+        recapForSession
       )
       return
     }
@@ -265,7 +304,8 @@ export function mountGameSession(opts: {
       () => {
         send({ type: 'surrender', roomId, gameSessionId: ttt.gameSessionId })
       },
-      myPlayerId
+      myPlayerId,
+      recapForSession
     )
   }
 
@@ -294,7 +334,7 @@ export function mountGameSession(opts: {
     `
   }
 
-  function gamePicker(isTableHost: boolean): TemplateResult {
+  function gamePicker(isTableHost: boolean, showLastRecap: boolean): TemplateResult {
     function pick(kind: GameKind) {
       logger.info({ roomId, kind }, 'create_game')
       send({ type: 'create_game', roomId, kind })
@@ -306,6 +346,17 @@ export function mountGameSession(opts: {
         aria-labelledby="pick-game-heading"
       >
         <h2 id="pick-game-heading" class="text-lg font-semibold text-zinc-900">Choose a game</h2>
+        ${showLastRecap
+          ? html`
+              <button
+                type="button"
+                class="w-full rounded-lg border border-zinc-300 bg-zinc-50 px-4 py-2.5 text-sm font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-100"
+                @click=${openGameRecap}
+              >
+                View last game recap
+              </button>
+            `
+          : nothing}
         ${isTableHost
           ? html`
               <p class="text-sm text-zinc-600">
@@ -421,6 +472,7 @@ export function mountGameSession(opts: {
         lastSnapshot = msg.snapshot
         leaderIdHint = msg.snapshot.leaderId
         titleDraft = msg.snapshot.roomTitle
+        clearStaleGameSummary(msg.snapshot)
         if (phase === 'play') paintBoardArea()
         if (phase === 'play') paintSessionChrome()
       }
@@ -446,6 +498,11 @@ export function mountGameSession(opts: {
         serverErrorMessage = msg.message
         paint()
         queueMicrotask(() => openModalById(SESSION_ERR_DLG_ID))
+      }
+      if (msg.type === 'game_summary' && msg.summary.roomId === roomId) {
+        lastGameSummary = msg.summary
+        paint()
+        queueMicrotask(() => openModalById(GAME_SUMMARY_DLG_ID))
       }
     }
     ws.onerror = (event) => {
@@ -537,6 +594,9 @@ export function mountGameSession(opts: {
               },
             })
           : nothing}
+        ${phase === 'play' && lastGameSummary
+          ? gameSummaryDialog(GAME_SUMMARY_DLG_ID, lastGameSummary)
+          : nothing}
       </div>
     `
   }
@@ -600,6 +660,7 @@ export function mountGameSession(opts: {
     titleDraft = ''
     serverErrorMessage = null
     joinNameError = null
+    lastGameSummary = null
     clearSessionContext()
     render(nothing, roomChatMount)
     render(nothing, host)
