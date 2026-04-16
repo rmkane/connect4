@@ -3,7 +3,7 @@ import { type GameSessionHandle, mountGameSession } from '@/gameSession.js'
 import { type LandingHandle, mountLanding } from '@/landing.js'
 import '@/main.css'
 import { initRouter, navigateToRoom, parseRoute } from '@/router.js'
-import { setUserContext } from '@/userContext.js'
+import { clearSessionContext } from '@/sessionContext.js'
 
 let session: GameSessionHandle | null = null
 let landing: LandingHandle | null = null
@@ -52,7 +52,7 @@ function renderRoute() {
 
   const route = parseRoute()
   if (route.type === 'home') {
-    setUserContext(null)
+    clearSessionContext()
     chatSidebar = mountChatSidebar({ aside, mode: 'home' })
     landing = mountLanding({
       host: mainHost,

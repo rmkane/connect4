@@ -17,9 +17,7 @@ import type {
 } from '@gameroom/shared'
 import { CHAT_HISTORY_LIMIT, sanitizeChatText } from '@gameroom/shared'
 
-import * as connect4Session from '@/game/connect4Session.js'
-import { applySurrender } from '@/game/surrender.js'
-import * as ticTacToeSession from '@/game/ticTacToeSession.js'
+import { getEngine, getEngineForActiveState } from '@/game/gameEngines.js'
 import { logger } from '@/logger.js'
 
 export class PlayerRoom {
@@ -129,6 +127,21 @@ export class PlayerRoom {
     return this.seats.red?.id === playerId || this.seats.yellow?.id === playerId
   }
 
+  private seatedCount(): number {
+    return (this.seats.red ? 1 : 0) + (this.seats.yellow ? 1 : 0)
+  }
+
+  /** Whether enough seats are filled and those sockets are open for this engine's roster. */
+  private allEnginePlayersConnected(engine: { maxPlayers: number }): boolean {
+    const seatedColors = (['red', 'yellow'] as const).filter((c) => this.seats[c])
+    if (seatedColors.length < engine.maxPlayers) return false
+    for (const c of seatedColors.slice(0, engine.maxPlayers)) {
+      const ws = this.sockets.get(c)
+      if (!ws || ws.readyState !== WebSocket.OPEN) return false
+    }
+    return true
+  }
+
   /** Random `[A,B]` or `[B,A]` so in-game roles (red/yellow, X/O) are not tied to room join order. */
   private shuffledPlayers(): readonly [PlayerId, PlayerId] {
     const a = this.seats.red!.id
@@ -159,18 +172,20 @@ export class PlayerRoom {
   }
 
   createGame(kind: GameKind): boolean {
-    if (!this.seats.red || !this.seats.yellow) return false
     if (this.activeGame?.status === 'in_progress') return false
+
+    const engine = getEngine(kind)
+    const seated = this.seatedCount()
+    if (seated < engine.minPlayers || seated > engine.maxPlayers) return false
+    // Table is still two seats; `create` only accepts a pair of ids until seating grows.
+    if (engine.maxPlayers > 2) return false
 
     const gameSessionId = randomUUID()
     this.games.push({ gameSessionId, kind, status: 'in_progress' })
 
     const players = this.shuffledPlayers()
 
-    this.activeGame =
-      kind === 'connect4'
-        ? connect4Session.createGame(this.roomId, gameSessionId, players)
-        : ticTacToeSession.createGame(this.roomId, gameSessionId, players)
+    this.activeGame = engine.create(this.roomId, gameSessionId, players)
 
     this.log.info({ kind, gameSessionId }, 'game created')
     this.broadcast()
@@ -185,43 +200,20 @@ export class PlayerRoom {
     if (!this.isSeatedPlayer(playerId)) return
     if (g.currentTurn !== playerId) return
 
-    if (g.game === 'connect4' && move.game === 'connect4') {
-      const r = connect4Session.applyMove(g, playerId, move.column)
-      if (r.kind === 'invalid') {
-        this.log.debug({ playerId, column: move.column }, 'connect4 drop ignored')
-        return
-      }
-      if (r.kind === 'finished') {
-        if (r.winner) this.addWin(r.winner)
-        this.setListingStatus(g.gameSessionId, 'completed')
-        if (r.winner) this.log.info({ playerId, column: move.column }, 'connect4 won')
-        else this.log.info('connect4 draw')
-      } else {
-        this.log.debug(
-          { playerId, column: move.column, nextTurn: g.currentTurn },
-          'connect4 piece placed'
-        )
-      }
-      this.broadcast()
-    } else if (g.game === 'tic_tac_toe' && move.game === 'tic_tac_toe') {
-      const r = ticTacToeSession.applyMove(g, playerId, move.row, move.col)
-      if (r.kind === 'invalid') {
-        this.log.debug({ playerId, row: move.row, col: move.col }, 'tic-tac-toe move ignored')
-        return
-      }
-      if (r.kind === 'finished') {
-        if (r.winner) this.addWin(r.winner)
-        this.setListingStatus(g.gameSessionId, 'completed')
-        if (r.winner) this.log.info({ playerId, row: move.row, col: move.col }, 'tic-tac-toe won')
-        else this.log.info('tic-tac-toe draw')
-      } else {
-        this.log.debug(
-          { playerId, row: move.row, col: move.col, nextTurn: g.currentTurn },
-          'tic-tac-toe move'
-        )
-      }
-      this.broadcast()
+    const engine = getEngineForActiveState(g)
+    const r = engine.applyMove(g, playerId, move)
+    if (r.kind === 'invalid') {
+      this.log.debug({ game: g.game, playerId, move }, 'move ignored')
+      return
     }
+    if (r.kind === 'finished') {
+      if (r.winner) this.addWin(r.winner)
+      this.setListingStatus(g.gameSessionId, 'completed')
+      this.log.info({ game: g.game, playerId, move, winner: r.winner }, 'game finished from move')
+    } else {
+      this.log.debug({ game: g.game, playerId, move, nextTurn: g.currentTurn }, 'move applied')
+    }
+    this.broadcast()
   }
 
   /** Another round of the same active game after it completed; both seats and sockets required. */
@@ -229,19 +221,14 @@ export class PlayerRoom {
     const g = this.activeGame
     if (!g || g.gameSessionId !== gameSessionId) return false
     if (g.status !== 'completed') return false
-    if (!this.seats.red || !this.seats.yellow) return false
-    for (const c of ['red', 'yellow'] as const) {
-      const sock = this.sockets.get(c)
-      if (!sock || sock.readyState !== WebSocket.OPEN) return false
-    }
+
+    const engine = getEngineForActiveState(g)
+    if (this.seatedCount() < engine.maxPlayers) return false
+    if (!this.allEnginePlayersConnected(engine)) return false
 
     const nextPlayers = this.shuffledPlayers()
 
-    if (g.game === 'connect4') {
-      connect4Session.startNewRound(g, nextPlayers)
-    } else {
-      ticTacToeSession.startNewRound(g, nextPlayers)
-    }
+    engine.startNewRound(g, nextPlayers)
 
     this.setListingStatus(gameSessionId, 'in_progress')
     this.log.info({ gameSessionId }, 'new round started')
@@ -255,7 +242,7 @@ export class PlayerRoom {
     if (g.status !== 'in_progress') return false
     if (!this.isSeatedPlayer(playerId)) return false
 
-    const opponent = applySurrender(g, playerId)
+    const opponent = getEngineForActiveState(g).surrender(g, playerId)
     this.addWin(opponent)
     this.setListingStatus(gameSessionId, 'completed')
     this.log.info({ loser: playerId, winner: opponent }, 'game ended surrender')

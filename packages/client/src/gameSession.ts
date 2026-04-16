@@ -14,7 +14,7 @@ import { CHAT_MAX_TEXT_LENGTH } from '@gameroom/shared'
 import { clientConfig } from '@/config.js'
 import { logger } from '@/logger.js'
 import { navigateHome } from '@/router.js'
-import { setUserContext } from '@/userContext.js'
+import { clearSessionContext, paintRoomSessionChrome } from '@/sessionContext.js'
 import { renderConnect4View } from '@/views/connect4View.js'
 import { renderTicTacToeView } from '@/views/ticTacToeView.js'
 
@@ -386,63 +386,8 @@ export function mountGameSession(opts: {
   }
 
   function shell(): TemplateResult {
-    const shareUrl = `${location.origin}/room/${roomId}`
-
     return html`
       <div class="flex w-full max-w-4xl flex-col items-stretch">
-        <div
-          class="mb-6 flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm sm:flex-row sm:items-start sm:justify-between sm:p-5"
-          aria-label="Room details"
-        >
-          <div class="min-w-0 flex-1">
-            <button
-              type="button"
-              class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-left text-sm font-medium text-red-800 underline decoration-red-300 underline-offset-2 hover:text-red-950"
-              @click=${() => {
-                ws?.close()
-                navigateHome()
-              }}
-            >
-              ← Leave room
-            </button>
-            <p class="mt-2 font-mono text-xs leading-relaxed text-zinc-600">
-              Room <span class="break-all text-zinc-800 select-all">${roomId}</span>
-            </p>
-          </div>
-          <div class="min-w-0 sm:max-w-[55%] sm:text-right">
-            <p class="text-xs font-medium tracking-wide text-zinc-500 uppercase">Invite</p>
-            <div
-              class="mt-2 flex flex-wrap items-center gap-2 sm:justify-end"
-              role="group"
-              aria-label="Copy or share room link"
-            >
-              <button
-                type="button"
-                class="inline-flex cursor-pointer items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50"
-                @click=${() => void copyInviteUrl(shareUrl)}
-              >
-                Copy link
-              </button>
-              ${canUseWebShare()
-                ? html`
-                    <button
-                      type="button"
-                      class="inline-flex cursor-pointer items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50"
-                      @click=${() => void shareInviteUrl(shareUrl)}
-                    >
-                      Share…
-                    </button>
-                  `
-                : nothing}
-              ${inviteFeedback === 'copied'
-                ? html`<span class="text-xs font-medium text-emerald-700">Copied</span>`
-                : inviteFeedback === 'failed'
-                  ? html`<span class="text-xs font-medium text-red-700">Copy failed</span>`
-                  : nothing}
-            </div>
-          </div>
-        </div>
-
         ${phase === 'name'
           ? html`
               <form
@@ -452,7 +397,6 @@ export function mountGameSession(opts: {
                   const fd = new FormData(e.target as HTMLFormElement)
                   displayName = String(fd.get('displayName') ?? '').trim() || 'Player'
                   logger.info({ roomId, displayName }, 'starting session')
-                  setUserContext(displayName)
                   phase = 'play'
                   paint()
                   connect()
@@ -488,11 +432,32 @@ export function mountGameSession(opts: {
     `
   }
 
+  function paintSessionChrome() {
+    if (phase !== 'play' || !displayName) {
+      clearSessionContext()
+      return
+    }
+    const shareUrl = `${location.origin}/room/${roomId}`
+    paintRoomSessionChrome({
+      displayName,
+      roomId,
+      shareUrl,
+      inviteFeedback,
+      onLeave: () => {
+        ws?.close()
+        navigateHome()
+      },
+      onCopy: () => void copyInviteUrl(shareUrl),
+      onShare: canUseWebShare() ? () => void shareInviteUrl(shareUrl) : undefined,
+    })
+  }
+
   function paint() {
     render(shell(), host)
     if (phase === 'play' && lastSnapshot) paintBoardArea()
     if (phase === 'play') paintRoomChat()
     else paintRoomChatPlaceholder()
+    paintSessionChrome()
   }
 
   function destroy() {
@@ -502,7 +467,7 @@ export function mountGameSession(opts: {
     myPlayerId = null
     roomChatMessages = []
     roomChatDraft = ''
-    setUserContext(null)
+    clearSessionContext()
     render(nothing, roomChatMount)
     render(nothing, host)
   }
