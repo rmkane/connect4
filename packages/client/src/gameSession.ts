@@ -20,10 +20,14 @@ import { clientConfig } from '@/config.js'
 import { logger } from '@/logger.js'
 import { navigateHome } from '@/router.js'
 import { clearSessionContext, paintRoomSessionChrome } from '@/sessionContext.js'
+import { alertModal, openModalById } from '@/views/appModal.js'
 import { renderConnect4View } from '@/views/connect4View.js'
 import { renderTicTacToeView } from '@/views/ticTacToeView.js'
 
 const ROOM_CHAT_LOG_ID = 'gameroom-room-chat-log'
+const ROOM_DISPLAY_NAME_MAX = 64
+const SESSION_ERR_DLG_ID = 'gs-session-err-dlg'
+const SESSION_JOIN_NAME_DLG_ID = 'gs-join-name-dlg'
 
 export type GameSessionHandle = { destroy: () => void }
 
@@ -70,6 +74,8 @@ export function mountGameSession(opts: {
   let inviteFeedback: '' | 'copied' | 'failed' = ''
   let inviteFeedbackTimer: ReturnType<typeof setTimeout> | null = null
   let titleDraft = ''
+  let serverErrorMessage: string | null = null
+  let joinNameError: string | null = null
 
   function send(msg: ClientMessage) {
     ws?.send(JSON.stringify(msg))
@@ -437,7 +443,9 @@ export function mountGameSession(opts: {
       }
       if (msg.type === 'error') {
         logger.warn({ message: msg.message }, 'server error')
-        alert(msg.message)
+        serverErrorMessage = msg.message
+        paint()
+        queueMicrotask(() => openModalById(SESSION_ERR_DLG_ID))
       }
     }
     ws.onerror = (event) => {
@@ -455,10 +463,26 @@ export function mountGameSession(opts: {
           ? html`
               <form
                 class="mx-auto w-full max-w-md rounded-xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8"
+                novalidate
                 @submit=${(e: Event) => {
                   e.preventDefault()
                   const fd = new FormData(e.target as HTMLFormElement)
-                  displayName = String(fd.get('displayName') ?? '').trim() || 'Player'
+                  const raw = String(fd.get('displayName') ?? '').trim()
+                  if (raw.length < 1) {
+                    joinNameError =
+                      'A display name is required so your opponent can see who they are playing.'
+                    paint()
+                    queueMicrotask(() => openModalById(SESSION_JOIN_NAME_DLG_ID))
+                    return
+                  }
+                  if (raw.length > ROOM_DISPLAY_NAME_MAX) {
+                    joinNameError = `Display name must be at most ${ROOM_DISPLAY_NAME_MAX} characters.`
+                    paint()
+                    queueMicrotask(() => openModalById(SESSION_JOIN_NAME_DLG_ID))
+                    return
+                  }
+                  joinNameError = null
+                  displayName = raw
                   logger.info({ roomId, displayName }, 'starting session')
                   phase = 'play'
                   paint()
@@ -466,16 +490,22 @@ export function mountGameSession(opts: {
                 }}
               >
                 <label class="block text-sm font-medium text-zinc-800" for="displayName"
-                  >Display name</label
+                  >Display name <span class="text-red-700">*</span></label
                 >
                 <input
                   id="displayName"
                   name="displayName"
                   type="text"
+                  required
+                  minlength="1"
+                  maxlength=${ROOM_DISPLAY_NAME_MAX}
                   autocomplete="nickname"
                   class="mt-2 w-full rounded-lg border border-zinc-300 px-3 py-2.5 text-sm text-zinc-900 focus:border-red-400 focus:ring-2 focus:ring-red-200 focus:outline-none"
-                  placeholder="Your name"
+                  placeholder="How you appear at the table"
                 />
+                <p class="mt-1.5 text-xs text-zinc-500">
+                  Required · max ${ROOM_DISPLAY_NAME_MAX} characters
+                </p>
                 <button
                   type="submit"
                   class="mt-5 w-full rounded-xl bg-red-700 px-4 py-2.5 text-sm font-semibold text-white shadow transition hover:bg-red-800"
@@ -491,6 +521,22 @@ export function mountGameSession(opts: {
                 aria-label="Play area"
               ></div>
             `}
+        ${serverErrorMessage
+          ? alertModal(SESSION_ERR_DLG_ID, 'Server message', serverErrorMessage, {
+              onDismiss: () => {
+                serverErrorMessage = null
+                paint()
+              },
+            })
+          : nothing}
+        ${joinNameError
+          ? alertModal(SESSION_JOIN_NAME_DLG_ID, 'Display name required', joinNameError, {
+              onDismiss: () => {
+                joinNameError = null
+                paint()
+              },
+            })
+          : nothing}
       </div>
     `
   }
@@ -552,6 +598,8 @@ export function mountGameSession(opts: {
     roomChatMessages = []
     roomChatDraft = ''
     titleDraft = ''
+    serverErrorMessage = null
+    joinNameError = null
     clearSessionContext()
     render(nothing, roomChatMount)
     render(nothing, host)

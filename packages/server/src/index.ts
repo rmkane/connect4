@@ -98,8 +98,27 @@ wss.on('connection', (ws) => {
     }
 
     if (msg.type === 'join_room') {
+      const dn = typeof msg.displayName === 'string' ? msg.displayName.trim() : ''
+      if (dn.length < 1) {
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            message: 'Display name is required to join a room.',
+          })
+        )
+        return
+      }
+      if (dn.length > 64) {
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            message: 'Display name must be at most 64 characters.',
+          })
+        )
+        return
+      }
       const room = manager.getOrCreate(msg.roomId)
-      const joined = room.join(ws, msg.displayName)
+      const joined = room.join(ws, dn)
       if (joined) {
         assignedRoomId = msg.roomId
         assignedPlayerId = joined.playerId
@@ -109,16 +128,13 @@ wss.on('connection', (ws) => {
             roomId: msg.roomId,
             playerId: joined.playerId,
             seat: joined.seat,
-            displayName: msg.displayName,
+            displayName: dn,
           },
           'player joined room'
         )
         manager.get(msg.roomId)?.sendChatHistoryTo(ws)
       } else {
-        connLog.warn(
-          { roomId: msg.roomId, displayName: msg.displayName },
-          'join rejected room full'
-        )
+        connLog.warn({ roomId: msg.roomId, displayName: dn }, 'join rejected room full')
         ws.send(
           JSON.stringify({
             type: 'error',

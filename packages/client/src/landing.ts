@@ -5,6 +5,7 @@ import type { PublicRoomSummary, RoomsListResponse } from '@gameroom/shared'
 import { clientConfig } from '@/config.js'
 import { logger } from '@/logger.js'
 import { navigateToRoom, parseGameIdInput } from '@/router.js'
+import { alertModal, openModalById } from '@/views/appModal.js'
 
 export type LandingHandle = { destroy: () => void }
 
@@ -45,6 +46,9 @@ export function mountLanding(opts: { host: HTMLElement; onCreate: () => void }):
   let filter = ''
   let pollTimer: ReturnType<typeof setInterval> | null = null
   let loadSeq = 0
+  let landJoinErr: string | null = null
+
+  const LAND_JOIN_ERR_DLG = 'land-join-invalid-dlg'
 
   function paint() {
     const q = filter.trim().toLowerCase()
@@ -78,15 +82,20 @@ export function mountLanding(opts: { host: HTMLElement; onCreate: () => void }):
 
           <form
             class="flex w-full flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-5 text-left shadow-sm sm:p-6"
+            novalidate
             @submit=${(e: Event) => {
               e.preventDefault()
               const fd = new FormData(e.target as HTMLFormElement)
               const raw = String(fd.get('joinRaw') ?? '')
               const id = parseGameIdInput(raw)
               if (!id) {
-                alert('Enter a valid room UUID, or paste the full /room/… or /game/… link.')
+                landJoinErr =
+                  'Enter a valid room UUID, or paste the full /room/… or /game/… link from your invite.'
+                paint()
+                queueMicrotask(() => openModalById(LAND_JOIN_ERR_DLG))
                 return
               }
+              landJoinErr = null
               navigateToRoom(id)
             }}
           >
@@ -203,6 +212,14 @@ export function mountLanding(opts: { host: HTMLElement; onCreate: () => void }):
                       </ul>
                     `}
           </section>
+          ${landJoinErr
+            ? alertModal(LAND_JOIN_ERR_DLG, 'Could not join from that link', landJoinErr, {
+                onDismiss: () => {
+                  landJoinErr = null
+                  paint()
+                },
+              })
+            : nothing}
         </div>
       `,
       host

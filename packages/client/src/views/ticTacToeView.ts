@@ -2,10 +2,11 @@ import { type TemplateResult, html, nothing, render } from 'lit'
 
 import type { PlayerId, RoomSnapshot, TicTacToeState } from '@gameroom/shared'
 
-import { rulesDialogMarkup, rulesOpenButton } from '@/views/gameRulesDialog.js'
+import { confirmModal, infoModal, modalOpenButton, openModalById } from '@/views/appModal.js'
 import { displayNameFor, markForPlayer, matchScoreFor } from '@/views/playerLabels.js'
 
 const TTT_RULES_DIALOG_ID = 'ttt-rules-dialog'
+const TTT_SURRENDER_DIALOG_ID = 'ttt-surrender-dialog'
 
 function canPlay(
   state: TicTacToeState,
@@ -174,15 +175,13 @@ function boardTemplate(
       </div>
 
       <div class="flex w-full max-w-[min(100%,28rem)] flex-wrap items-center justify-center gap-2">
-        ${rulesOpenButton(TTT_RULES_DIALOG_ID)}
+        ${modalOpenButton(TTT_RULES_DIALOG_ID, 'Rules')}
         ${showSurrender
           ? html`
               <button
                 type="button"
                 class="rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-900 shadow-sm transition hover:bg-red-100 sm:text-sm"
-                @click=${() => {
-                  if (confirm('Surrender? Your opponent wins this game.')) onSurrender()
-                }}
+                @click=${() => openModalById(TTT_SURRENDER_DIALOG_ID)}
               >
                 Surrender
               </button>
@@ -217,7 +216,25 @@ function boardTemplate(
         </div>
       </div>
 
-      ${rulesDialogMarkup(TTT_RULES_DIALOG_ID, 'Tic-tac-toe — how to play', rulesBody)}
+      ${infoModal(TTT_RULES_DIALOG_ID, 'Tic-tac-toe — how to play', rulesBody)}
+      ${showSurrender
+        ? confirmModal(
+            TTT_SURRENDER_DIALOG_ID,
+            'Surrender this game?',
+            html`
+              <p>
+                Your opponent will win this match immediately. This cannot be undone for the current
+                game.
+              </p>
+            `,
+            {
+              confirmLabel: 'Surrender',
+              cancelLabel: 'Keep playing',
+              danger: true,
+              onConfirm: () => onSurrender(),
+            }
+          )
+        : nothing}
     </div>
   `
 }

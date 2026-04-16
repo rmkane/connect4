@@ -2,7 +2,7 @@ import { type TemplateResult, html, nothing, render } from 'lit'
 
 import type { Connect4State, PlayerId, RoomSnapshot } from '@gameroom/shared'
 
-import { rulesDialogMarkup, rulesOpenButton } from '@/views/gameRulesDialog.js'
+import { confirmModal, infoModal, modalOpenButton, openModalById } from '@/views/appModal.js'
 import {
   connect4GameSide,
   displayNameFor,
@@ -11,6 +11,7 @@ import {
 } from '@/views/playerLabels.js'
 
 const C4_RULES_DIALOG_ID = 'c4-rules-dialog'
+const C4_SURRENDER_DIALOG_ID = 'c4-surrender-dialog'
 
 function canDrop(state: Connect4State, myPlayerId: PlayerId | null): boolean {
   return state.status === 'in_progress' && myPlayerId !== null && state.currentTurn === myPlayerId
@@ -205,15 +206,13 @@ function boardTemplate(
       </div>
 
       <div class="flex w-full max-w-[min(100%,28rem)] flex-wrap items-center justify-center gap-2">
-        ${rulesOpenButton(C4_RULES_DIALOG_ID)}
+        ${modalOpenButton(C4_RULES_DIALOG_ID, 'Rules')}
         ${showSurrender
           ? html`
               <button
                 type="button"
                 class="rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-900 shadow-sm transition hover:bg-red-100 sm:text-sm"
-                @click=${() => {
-                  if (confirm('Surrender? Your opponent wins this game.')) onSurrender()
-                }}
+                @click=${() => openModalById(C4_SURRENDER_DIALOG_ID)}
               >
                 Surrender
               </button>
@@ -248,7 +247,25 @@ function boardTemplate(
         </div>
       </div>
 
-      ${rulesDialogMarkup(C4_RULES_DIALOG_ID, 'Connect 4 — how to play', rulesBody)}
+      ${infoModal(C4_RULES_DIALOG_ID, 'Connect 4 — how to play', rulesBody)}
+      ${showSurrender
+        ? confirmModal(
+            C4_SURRENDER_DIALOG_ID,
+            'Surrender this game?',
+            html`
+              <p>
+                Your opponent will win this match immediately. This cannot be undone for the current
+                game.
+              </p>
+            `,
+            {
+              confirmLabel: 'Surrender',
+              cancelLabel: 'Keep playing',
+              danger: true,
+              onConfirm: () => onSurrender(),
+            }
+          )
+        : nothing}
     </div>
   `
 }
